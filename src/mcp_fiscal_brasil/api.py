@@ -41,12 +41,20 @@ from .cpf.tools import validar_cpf_tool
 from .ibge.client import IBGEClient
 from .nfe.status_sefaz import obter_status_certificado
 from .nfe.tools import UFS_VALIDAS, consultar_status_sefaz, validar_chave_nfe
+from .server import app as mcp_server
 from .shared.validators import normalizar_cnpj, validate_cnpj_qualquer
 from .simples.client import SimplesClient
 
 logger = get_logger(__name__)
 
+# Servidor MCP por HTTP (streamable) no mesmo processo da API REST: um deploy
+# so serve a pagina em "/", a API em "/v1" e os clientes MCP em "/mcp". O
+# lifespan do app MCP precisa ser o do FastAPI, senao o gerenciador de sessoes
+# nao inicia e todo pedido em "/mcp" falha.
+_mcp_http = mcp_server.http_app(path="/mcp")
+
 app = FastAPI(
+    lifespan=_mcp_http.lifespan,
     title="MCP Fiscal Brasil",
     version=__version__,
     description=(
@@ -535,6 +543,11 @@ a { color:var(--accent); }
 def root() -> HTMLResponse:
     """Web UI demo (htmx)."""
     return HTMLResponse(_DEMO_HTML)
+
+
+# Montado por ultimo: as rotas declaradas acima (inclusive /health) tem
+# prioridade, e so o que sobra ("/mcp") chega ao app MCP.
+app.mount("/", _mcp_http)
 
 
 # ---------------------------------------------------------------------------

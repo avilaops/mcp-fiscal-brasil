@@ -317,3 +317,31 @@ def test_cnpj_lookup_rejeita_espacos_mesmo_com_digito_valido() -> None:
         response = client.get("/v1/cnpj/33 000 167 0001 01")
     assert response.status_code == 400
     consultar.assert_not_called()
+
+
+def test_mcp_http_montado_na_api() -> None:
+    """O mesmo processo da API REST atende clientes MCP em /mcp."""
+    pedido = {
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "initialize",
+        "params": {
+            "protocolVersion": "2025-06-18",
+            "capabilities": {},
+            "clientInfo": {"name": "teste", "version": "1"},
+        },
+    }
+    # O "with" roda o lifespan, que inicia o gerenciador de sessoes do MCP.
+    with TestClient(app) as cliente_mcp:
+        response = cliente_mcp.post(
+            "/mcp",
+            json=pedido,
+            headers={"Accept": "application/json, text/event-stream"},
+        )
+        pagina = cliente_mcp.get("/")
+        saude = cliente_mcp.get("/health")
+    assert response.status_code == 200
+    assert "MCP Fiscal Brasil" in response.text
+    assert response.headers.get("mcp-session-id")
+    assert pagina.status_code == 200
+    assert saude.json()["service"] == "mcp-fiscal-brasil"
