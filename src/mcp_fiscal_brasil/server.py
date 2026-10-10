@@ -30,6 +30,7 @@ from .cnae import _tools as cnae_tools
 # Importa todas as ferramentas dos modulos fiscais
 from .cnpj.tools import consultar_cnpj, listar_cnpjs_por_nome
 from .cpf.tools import validar_cpf_tool
+from .dfe import gerar_dacte, gerar_damdfe, validar_chave_dfe, validar_xml_fiscal
 from .empresa import _tools as empresa_tools
 from .esocial.tools import listar_eventos_esocial, validar_evento_esocial
 from .ibge import _tools as ibge_tools
@@ -392,6 +393,95 @@ async def tool_gerar_danfe(xml_content: str) -> dict[str, Any]:
     """
     resultado: DanfeResult = gerar_danfe(xml_content)
     return resultado.model_dump(mode="json", exclude_none=True)
+
+
+@app.tool(
+    name="gerar_dacte",
+    description=(
+        "Gera o DACTE (documento auxiliar do CT-e) em PDF a partir do XML de um CT-e modelo 57, "
+        "com ou sem o protocolo (cteProc). O PDF volta em base64. Mesmo formato do gerar_danfe. "
+        "Nao precisa de certificado digital."
+    ),
+)
+async def tool_gerar_dacte(xml_content: str) -> dict[str, Any]:
+    """Gera o DACTE em PDF a partir do XML de um CT-e.
+
+    Args:
+        xml_content: XML completo do CT-e (CTe ou cteProc), como texto.
+
+    Returns:
+        dict com pdf_base64, modelo (57), nome_arquivo, chave_acesso, numero,
+        serie e autorizado (ha protocolo com cStat 100 no XML).
+    """
+    return gerar_dacte(xml_content).model_dump(mode="json", exclude_none=True)
+
+
+@app.tool(
+    name="gerar_damdfe",
+    description=(
+        "Gera o DAMDFE (documento auxiliar do MDF-e) em PDF a partir do XML de um MDF-e modelo 58, "
+        "com ou sem o protocolo (mdfeProc). O PDF volta em base64. Mesmo formato do gerar_danfe. "
+        "Nao precisa de certificado digital."
+    ),
+)
+async def tool_gerar_damdfe(xml_content: str) -> dict[str, Any]:
+    """Gera o DAMDFE em PDF a partir do XML de um MDF-e.
+
+    Args:
+        xml_content: XML completo do MDF-e (MDFe ou mdfeProc), como texto.
+
+    Returns:
+        dict com pdf_base64, modelo (58), nome_arquivo, chave_acesso, numero,
+        serie e autorizado (ha protocolo com cStat 100 no XML).
+    """
+    return gerar_damdfe(xml_content).model_dump(mode="json", exclude_none=True)
+
+
+@app.tool(
+    name="validar_xml_fiscal",
+    description=(
+        "Confere um XML de NF-e, CT-e ou MDF-e (documento, documento com protocolo, evento, "
+        "inutilizacao, consulta) contra os esquemas XSD oficiais, inclusive o modal e o detalhe do "
+        "evento, que o esquema principal nao confere, e a chave de acesso contra os campos do XML. "
+        "Devolve os erros com linha e campo e diz qual pacote de esquemas foi usado. "
+        "Nao aplica as regras de negocio da SEFAZ nem confere a assinatura."
+    ),
+)
+async def tool_validar_xml_fiscal(xml_content: str, tipo: str | None = None) -> dict[str, Any]:
+    """Confere um XML fiscal contra os esquemas oficiais.
+
+    Args:
+        xml_content: o XML como texto.
+        tipo: opcional, "nfe", "cte" ou "mdfe". Se o XML for de outro tipo a
+            conferencia e recusada.
+
+    Returns:
+        dict com valido, tipo, modelo, documento, versao, versao_esquema,
+        pacote (nome, data e notas tecnicas dos esquemas), esquemas_usados,
+        chave_acesso, erros (linha, coluna, campo, mensagem, origem) e avisos.
+    """
+    return validar_xml_fiscal(xml_content, tipo)
+
+
+@app.tool(
+    name="validar_chave_dfe",
+    description=(
+        "Confere a chave de acesso de 44 posicoes de NF-e (55), NFC-e (65), CT-e (57), CT-e OS (67) "
+        "e MDF-e (58): formato, UF, mes, modelo e digito verificador. Aceita CNPJ alfanumerico. "
+        "Nao consulta a SEFAZ."
+    ),
+)
+async def tool_validar_chave_dfe(chave_acesso: str) -> dict[str, Any]:
+    """Confere uma chave de acesso de documento fiscal eletronico.
+
+    Args:
+        chave_acesso: a chave, com ou sem espacos e com ou sem o prefixo do
+            atributo Id (NFe, CTe, MDFe).
+
+    Returns:
+        dict com valido, motivos e as partes da chave.
+    """
+    return validar_chave_dfe(chave_acesso)
 
 
 @app.tool(
