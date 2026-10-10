@@ -523,3 +523,49 @@ class TestTabelasOficiais:
         notebook = buscar_ncm("84713012")
         assert notebook is not None
         assert "<" not in notebook["descricao"] and "<" not in notebook["hierarquia"]
+
+
+class TestClassificacaoTributaria:
+    """CST e cClassTrib do IBS/CBS pela tabela oficial."""
+
+    def test_par_valido_para_cte(self) -> None:
+        from mcp_fiscal_brasil.tabelas.classificacao import consultar_classificacao_tributaria
+
+        resultado = consultar_classificacao_tributaria(
+            cst="000", cclasstrib="000001", documento="cte"
+        )
+        assert resultado["valido"] is True
+        assert resultado["cst"] == "000"
+        assert "cte" in resultado["documentos"]
+        assert "Portal Nacional da NF-e" in resultado["fonte"]
+
+    def test_classificacao_de_outro_cst_ou_de_outro_documento(self) -> None:
+        from mcp_fiscal_brasil.tabelas.classificacao import consultar_classificacao_tributaria
+
+        outro_cst = consultar_classificacao_tributaria(cst="200", cclasstrib="000001")
+        assert outro_cst["valido"] is False
+        assert "CST 000" in outro_cst["motivos"][0]
+        # 400001 (transporte coletivo de passageiros) vale em BP-e e NFS-e, nao em CT-e.
+        outro_documento = consultar_classificacao_tributaria(cclasstrib="400001", documento="CT-e")
+        assert outro_documento["valido"] is False
+        assert "nao vale em cte" in outro_documento["motivos"][0]
+        inexistente = consultar_classificacao_tributaria(cclasstrib="999999")
+        assert inexistente["valido"] is False
+
+    def test_lista_por_documento_e_por_cst(self) -> None:
+        from mcp_fiscal_brasil.tabelas.classificacao import consultar_classificacao_tributaria
+
+        do_cte = consultar_classificacao_tributaria(documento="cte")
+        assert 1 <= do_cte["total"] <= 60
+        assert all("cte" in item["documentos"] for item in do_cte["classificacoes"])
+        do_cst = consultar_classificacao_tributaria(cst="410", documento="nfe")
+        assert do_cst["total"] >= 1
+        assert {item["cst"] for item in do_cst["classificacoes"]} == {"410"}
+
+    def test_recusa_pedido_vazio_e_documento_desconhecido(self) -> None:
+        from mcp_fiscal_brasil.tabelas.classificacao import consultar_classificacao_tributaria
+
+        with pytest.raises(FiscalValidationError):
+            consultar_classificacao_tributaria()
+        with pytest.raises(FiscalValidationError):
+            consultar_classificacao_tributaria(cst="000", documento="boleto")

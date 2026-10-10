@@ -10,6 +10,7 @@ from typing import Any
 
 from fastmcp import FastMCP
 
+from .classificacao import consultar_classificacao_tributaria
 from .tools import (
     consultar_aliquota_icms,
     consultar_cest,
@@ -20,7 +21,7 @@ from .tools import (
 
 
 def register(app: FastMCP) -> None:
-    """Registra as 5 ferramentas de tabelas fiscais no servidor MCP fornecido."""
+    """Registra as ferramentas de tabelas fiscais no servidor MCP fornecido."""
 
     @app.tool(
         name="consultar_ncm",
@@ -30,8 +31,8 @@ def register(app: FastMCP) -> None:
             "cálculo de IPI e preenchimento do SPED. "
             "Quando usar: ao emitir nota fiscal, fazer importação/exportação ou calcular tributos. "
             "Comportamento offline: lê do banco SQLite bundled; não requer conexão. "
-            "AVISO: o banco pode conter apenas uma amostra da TIPI completa (~10.515 registros); "
-            "execute scripts/build_tabelas_db.py para popular a tabela completa. "
+            "A base traz a nomenclatura NCM vigente inteira (Siscomex); a aliquota de IPI so "
+            "existe para uma amostra de codigos e vem vazia nos demais. "
             "Formato do parâmetro: 8 dígitos numéricos, com ou sem pontuação "
             "(ex: '84713019' ou '8471.30.19')."
         ),
@@ -54,6 +55,34 @@ def register(app: FastMCP) -> None:
         return resultado.model_dump(mode="json", exclude_none=True)
 
     @app.tool(
+        name="consultar_classificacao_tributaria",
+        description=(
+            "Consulta ou confere a classificacao tributaria do IBS e da CBS (reforma tributaria): "
+            "CST e cClassTrib da tabela oficial do Portal Nacional da NF-e. "
+            "Com cclasstrib, diz se ele existe, se pertence ao cst informado e se vale no documento "
+            "informado (nfe, nfce, cte, cteos, bpe, nf3e, nfse, nfcom, nfag, nfgas), e quais grupos "
+            "do XML ele exige. So com cst ou documento, lista as classificacoes. Offline."
+        ),
+    )
+    async def tool_consultar_classificacao_tributaria(
+        cst: str | None = None,
+        cclasstrib: str | None = None,
+        documento: str | None = None,
+    ) -> dict[str, Any]:
+        """Consulta ou confere CST e cClassTrib do IBS/CBS.
+
+        Args:
+            cst: CST do IBS/CBS, 3 digitos (ex.: "000", "200", "410").
+            cclasstrib: codigo de classificacao tributaria, 6 digitos (ex.: "000001").
+            documento: documento fiscal em que sera usado (ex.: "cte", "nfe").
+
+        Returns:
+            Com cclasstrib: valido, motivos e os dados da classificacao.
+            Sem cclasstrib: total e a lista de classificacoes.
+        """
+        return consultar_classificacao_tributaria(cst, cclasstrib, documento)
+
+    @app.tool(
         name="consultar_cfop",
         description=(
             "Consulta o Código Fiscal de Operações e Prestações (CFOP). "
@@ -61,7 +90,8 @@ def register(app: FastMCP) -> None:
             "de NF-e, SPED EFD-ICMS/IPI e escrituração contábil. "
             "Quando usar: ao emitir nota fiscal, classificar entradas/saídas ou analisar "
             "obrigações acessórias. "
-            "Comportamento offline: lê dicionário em memória com todos os grupos CFOP; "
+            "Comportamento offline: tabela oficial inteira do Portal Nacional da NF-e, com nota "
+            "explicativa, vigencia e indicadores de uso (nfe, transporte...); "
             "não requer conexão. "
             "Formato do parâmetro: 4 dígitos numéricos (ex: '5102', '6101', '1556'). "
             "Grupos: 1/2/3 = entradas (estadual/interestadual/exterior); "

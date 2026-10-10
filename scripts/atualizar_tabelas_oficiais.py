@@ -4,6 +4,7 @@
 Fontes (baixar e passar o caminho; o script nao acessa a rede):
 
   --cfop       "Tabela de CFOP" (.xlsx), Portal Nacional da NF-e, Documentos > Diversos.
+  --cclasstrib "Tabela de Classificacao Tributaria do IBS e CBS" (.xlsx), mesmo lugar.
   --ncm        Nomenclatura NCM vigente (.json), Portal Unico Siscomex:
                https://portalunico.siscomex.gov.br/classif/api/publico/nomenclatura/download/json
   --ncm-utrib  "Tabela de NCM e respectiva uTrib" (.xlsx), Portal Nacional da NF-e,
@@ -11,6 +12,7 @@ Fontes (baixar e passar o caminho; o script nao acessa a rede):
 
 Saidas:
   src/mcp_fiscal_brasil/tabelas/data/cfop_oficial.json   (a tabela inteira de CFOP)
+  src/mcp_fiscal_brasil/tabelas/data/cclasstrib_oficial.json (CST e cClassTrib do IBS/CBS)
   src/mcp_fiscal_brasil/tabelas/data/tabelas_fiscais.db  (tabela `ncm` completada)
 
 Na tabela `ncm`, a aliquota de IPI e o EX das linhas que ja existiam sao
@@ -107,6 +109,49 @@ def gerar_cfop(planilha: Path, referencia: str) -> int:
     return len(codigos)
 
 
+def gerar_classificacao(planilha: Path, referencia: str) -> int:
+    """Tabela de Classificacao Tributaria do IBS e da CBS (cClassTrib), primeira planilha."""
+    documentos = {
+        "Z": "nfe", "AA": "nfce", "AB": "cte", "AC": "cteos", "AD": "bpe", "AG": "nf3e",
+        "AH": "nfse", "AJ": "nfcom", "AK": "nfag", "AL": "nfgas",
+    }  # fmt: skip
+    grupos = {
+        "M": "gTribRegular", "N": "gCredPresOper", "O": "gMonoPadrao", "P": "gMonoReten",
+        "Q": "gMonoRet", "R": "gpBioDiferenca", "S": "gEstornoCred",
+    }  # fmt: skip
+    codigos: dict[str, dict[str, object]] = {}
+    for linha in linhas_xlsx(planilha):
+        codigo = linha.get("C", "")
+        if not re.fullmatch(r"\d{6}", codigo) or not re.fullmatch(r"\d{3}", linha.get("A", "")):
+            continue
+        codigos[codigo] = {
+            "cst": linha["A"],
+            "descricao_cst": linha.get("B", ""),
+            "nome": linha.get("D", ""),
+            "descricao": linha.get("E", ""),
+            "base_legal": linha.get("G", ""),
+            "tipo_de_aliquota": linha.get("J", ""),
+            "reducao_ibs": float(linha.get("K") or 0),
+            "reducao_cbs": float(linha.get("L") or 0),
+            "grupos": sorted(nome for coluna, nome in grupos.items() if linha.get(coluna) == "1"),
+            "documentos": sorted(
+                nome for coluna, nome in documentos.items() if linha.get(coluna) == "1"
+            ),
+            "inicio": data_do_excel(linha.get("V", "")),
+            "fim": data_do_excel(linha.get("W", "")),
+        }
+    saida = {
+        "fonte": "Tabela de Classificacao Tributaria do IBS e CBS, Portal Nacional da NF-e (Documentos > Diversos)",
+        "referencia": referencia,
+        "arquivo": planilha.name,
+        "codigos": dict(sorted(codigos.items())),
+    }
+    (DADOS / "cclasstrib_oficial.json").write_text(
+        json.dumps(saida, ensure_ascii=False, indent=1) + "\n", encoding="utf-8"
+    )
+    return len(codigos)
+
+
 def _limpo(texto: str) -> str:
     # A nomenclatura traz marcacao HTML (cm<sup>2</sup>): fica so o texto.
     sem_marcacao = re.sub(r"<[^>]+>", "", texto)
@@ -180,11 +225,16 @@ def main() -> None:
     )
     args.add_argument("--cfop", type=Path)
     args.add_argument("--referencia-cfop", default="")
+    args.add_argument("--cclasstrib", type=Path)
+    args.add_argument("--referencia-cclasstrib", default="")
     args.add_argument("--ncm", type=Path)
     args.add_argument("--ncm-utrib", type=Path)
     opcoes = args.parse_args()
     if opcoes.cfop:
         print(f"CFOP: {gerar_cfop(opcoes.cfop, opcoes.referencia_cfop)} codigos")
+    if opcoes.cclasstrib:
+        total = gerar_classificacao(opcoes.cclasstrib, opcoes.referencia_cclasstrib)
+        print(f"cClassTrib: {total} classificacoes")
     if opcoes.ncm:
         novos, total, referencia = atualizar_ncm(opcoes.ncm, opcoes.ncm_utrib)
         print(f"NCM: {novos} novos, {total} no total ({referencia})")
