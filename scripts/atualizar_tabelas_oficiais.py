@@ -9,15 +9,17 @@ Fontes (baixar e passar o caminho; o script nao acessa a rede):
                https://portalunico.siscomex.gov.br/classif/api/publico/nomenclatura/download/json
   --ncm-utrib  "Tabela de NCM e respectiva uTrib" (.xlsx), Portal Nacional da NF-e,
                Documentos > Diversos (traz a unidade tributavel de cada NCM).
+  --tipi       Tabela de Incidencia do IPI vigente (.xlsx), Receita Federal:
+               https://www.gov.br/receitafederal/pt-br/acesso-a-informacao/legislacao/documentos-e-arquivos/tipi.xlsx
 
 Saidas:
   src/mcp_fiscal_brasil/tabelas/data/cfop_oficial.json   (a tabela inteira de CFOP)
   src/mcp_fiscal_brasil/tabelas/data/cclasstrib_oficial.json (CST e cClassTrib do IBS/CBS)
   src/mcp_fiscal_brasil/tabelas/data/tabelas_fiscais.db  (tabela `ncm` completada)
 
-Na tabela `ncm`, a aliquota de IPI e o EX das linhas que ja existiam sao
-mantidos (vieram da amostra da TIPI); as linhas novas ficam sem aliquota, e a
-consulta diz isso. Uso:
+Na tabela `ncm`, a aliquota de IPI vem da TIPI (--tipi): numero, ou "NT" (nao
+tributado, coluna `ipi_nt`). As excecoes (EX) de cada codigo ficam na tabela
+`tipi_ex`. Codigo que a TIPI nao traz fica sem aliquota, e a consulta diz isso. Uso:
 
   python scripts/atualizar_tabelas_oficiais.py --cfop cfop.xlsx --ncm ncm.json \\
       --ncm-utrib ncm_utrib.xlsx --referencia-cfop "publicada em 04/09/2026"
@@ -219,6 +221,76 @@ def atualizar_ncm(nomenclatura: Path, utrib: Path | None) -> tuple[int, int, str
     return novos, total, referencia
 
 
+def _aliquota(valor: str) -> tuple[float | None, bool]:
+    """A coluna de aliquota da TIPI: um percentual, "NT" ou vazia."""
+    texto = valor.strip().upper()
+    if texto == "NT":
+        return None, True
+    try:
+        return round(float(texto.replace(",", ".")), 4), False
+    except ValueError:
+        return None, False
+
+
+def atualizar_tipi(planilha: Path) -> tuple[int, int, str]:
+    """Grava a aliquota de IPI de cada NCM e as excecoes (EX), como a TIPI publicada traz."""
+    linhas = list(linhas_xlsx(planilha))
+    # O cabecalho lista os atos que atualizaram a tabela; o ultimo diz de quando ela e.
+    atos = next(
+        (linha["A"] for linha in linhas if linha.get("A", "").startswith("Atualiza")), ""
+    ).splitlines()
+    referencia = (
+        f"Decreto nº 11.158/2022, atualizada até: {atos[-1].strip()}"
+        if atos
+        else "Decreto nº 11.158/2022"
+    )
+
+    banco = sqlite3.connect(DADOS / "tabelas_fiscais.db")
+    colunas = {linha[1] for linha in banco.execute("PRAGMA table_info(ncm)")}
+    if "ipi_nt" not in colunas:
+        banco.execute("ALTER TABLE ncm ADD COLUMN ipi_nt INTEGER NOT NULL DEFAULT 0")
+    banco.execute("DROP TABLE IF EXISTS tipi_ex")
+    banco.execute(
+        "CREATE TABLE tipi_ex (ncm TEXT NOT NULL, ex TEXT NOT NULL, descricao TEXT NOT NULL, aliquota_ipi REAL, ipi_nt INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (ncm, ex))"
+    )
+    banco.execute(
+        "CREATE TABLE IF NOT EXISTS fontes (tabela TEXT PRIMARY KEY, fonte TEXT NOT NULL, referencia TEXT NOT NULL)"
+    )
+    # So a TIPI diz a aliquota: o que havia de amostra sai, para nao sobrar numero sem fonte.
+    banco.execute("UPDATE ncm SET aliquota_ipi = NULL, ex_tipi = NULL, ipi_nt = 0")
+
+    codigos = excecoes = 0
+    for linha in linhas:
+        codigo = linha.get("A", "").strip()
+        if not re.fullmatch(r"\d{4}\.\d{2}\.\d{2}", codigo):
+            continue
+        ncm = codigo.replace(".", "")
+        aliquota, nt = _aliquota(linha.get("D", ""))
+        if aliquota is None and not nt:
+            continue
+        ex = re.sub(r"\D", "", linha.get("B", ""))
+        if ex:
+            banco.execute(
+                "INSERT OR REPLACE INTO tipi_ex VALUES (?, ?, ?, ?, ?)",
+                (ncm, ex.zfill(2), _limpo(linha.get("C", "")), aliquota, int(nt)),
+            )
+            excecoes += 1
+        else:
+            atualizado = banco.execute(
+                "UPDATE ncm SET aliquota_ipi = ?, ipi_nt = ? WHERE codigo = ?",
+                (aliquota, int(nt), ncm),
+            )
+            codigos += atualizado.rowcount
+    banco.execute(
+        "INSERT OR REPLACE INTO fontes VALUES ('tipi', ?, ?)",
+        ("Tabela de Incidência do IPI (TIPI), Receita Federal", referencia),
+    )
+    banco.commit()
+    banco.execute("VACUUM")
+    banco.close()
+    return codigos, excecoes, referencia
+
+
 def main() -> None:
     args = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
@@ -229,6 +301,7 @@ def main() -> None:
     args.add_argument("--referencia-cclasstrib", default="")
     args.add_argument("--ncm", type=Path)
     args.add_argument("--ncm-utrib", type=Path)
+    args.add_argument("--tipi", type=Path)
     opcoes = args.parse_args()
     if opcoes.cfop:
         print(f"CFOP: {gerar_cfop(opcoes.cfop, opcoes.referencia_cfop)} codigos")
@@ -238,6 +311,9 @@ def main() -> None:
     if opcoes.ncm:
         novos, total, referencia = atualizar_ncm(opcoes.ncm, opcoes.ncm_utrib)
         print(f"NCM: {novos} novos, {total} no total ({referencia})")
+    if opcoes.tipi:
+        codigos, excecoes, referencia = atualizar_tipi(opcoes.tipi)
+        print(f"TIPI: {codigos} codigos com aliquota, {excecoes} excecoes ({referencia})")
 
 
 if __name__ == "__main__":

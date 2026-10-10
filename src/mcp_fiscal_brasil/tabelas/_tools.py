@@ -40,16 +40,17 @@ def register(app: FastMCP) -> None:
     async def tool_consultar_ncm(ncm: str) -> dict[str, Any]:
         """Consulta a Nomenclatura Comum do Mercosul (NCM/TIPI) de um produto.
 
-        Retorna a descricao, aliquota de IPI, unidade tributavel e eventual excecao TIPI
-        para o codigo de 8 digitos informado. Operacao offline a partir do banco bundled.
+        Retorna a descricao, a aliquota de IPI da TIPI vigente (ou a marca de NT, nao
+        tributado), as excecoes (EX) do codigo e a unidade tributavel, para o codigo de
+        8 digitos informado. Operacao offline a partir do banco bundled.
 
         Args:
             ncm: Codigo NCM com 8 digitos numericos, com ou sem pontucao
                  (ex.: "84713019" ou "8471.30.19").
 
         Returns:
-            dict com codigo, descricao, aliquota_ipi, unidade_tributavel, ex_tipi,
-            capitulo e posicao.
+            dict com codigo, descricao, aliquota_ipi, ipi_nao_tributado, excecoes_tipi,
+            fonte_ipi, unidade_tributavel, capitulo e posicao.
         """
         resultado = await consultar_ncm(ncm)
         return resultado.model_dump(mode="json", exclude_none=True)

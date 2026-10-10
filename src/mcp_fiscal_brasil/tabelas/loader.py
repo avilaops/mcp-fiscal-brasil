@@ -570,14 +570,32 @@ def buscar_ncm(codigo: str) -> dict[str, Any] | None:
         return None
     codigo_limpo = codigo.replace(".", "").replace("-", "").strip()
     row = conn.execute(
-        "SELECT codigo, descricao, aliquota_ipi, unidade_tributavel, ex_tipi, hierarquia FROM ncm WHERE codigo = ?",
+        "SELECT codigo, descricao, aliquota_ipi, ipi_nt, unidade_tributavel, ex_tipi, hierarquia FROM ncm WHERE codigo = ?",
         (codigo_limpo,),
     ).fetchone()
     if row is None:
         return None
     dado = dict(row)
-    fonte = conn.execute("SELECT fonte, referencia FROM fontes WHERE tabela = 'ncm'").fetchone()
-    dado["fonte"] = f"{fonte['fonte']} ({fonte['referencia']})" if fonte else None
+    dado["ipi_nao_tributado"] = bool(dado.pop("ipi_nt"))
+    # As exceções (EX) da TIPI: o mesmo código com outra alíquota para um produto descrito.
+    dado["excecoes_tipi"] = [
+        {
+            "ex": ex["ex"],
+            "descricao": ex["descricao"],
+            "aliquota_ipi": ex["aliquota_ipi"],
+            "ipi_nao_tributado": bool(ex["ipi_nt"]),
+        }
+        for ex in conn.execute(
+            "SELECT ex, descricao, aliquota_ipi, ipi_nt FROM tipi_ex WHERE ncm = ? ORDER BY ex",
+            (codigo_limpo,),
+        )
+    ]
+    fontes = {
+        linha["tabela"]: f"{linha['fonte']} ({linha['referencia']})"
+        for linha in conn.execute("SELECT tabela, fonte, referencia FROM fontes")
+    }
+    dado["fonte"] = fontes.get("ncm")
+    dado["fonte_ipi"] = fontes.get("tipi")
     return dado
 
 

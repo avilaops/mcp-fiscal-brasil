@@ -2,7 +2,7 @@
 Testes para o módulo de cálculo de tributos de importação por NCM.
 
 Exemplo numérico de referência (validado - valores pós-correção fiscal):
-  NCM: 22030000 (cerveja)
+  NCM: 24031900 (outros tabacos para fumar; 30% de IPI na TIPI vigente)
   VA  = R$ 10.000,00
   II  = 20%  ->  base = 10.000  ->  II = 2.000
   IPI = 30%  ->  base = VA + II = 12.000  ->  IPI = 3.600
@@ -41,11 +41,11 @@ from mcp_fiscal_brasil.importacao.tools import (
 # Constantes do exemplo numérico de referência
 # ---------------------------------------------------------------------------
 
-_NCM_CERVEJA = "22030000"
+_NCM_REFERENCIA = "24031900"
 _NCM_INEXISTENTE = "00000001"
 _VA = 10_000.0
 _ALIQ_II = 20.0
-_ALIQ_IPI_CERVEJA = 30.0
+_ALIQ_IPI_REFERENCIA = 30.0
 _ALIQ_PIS = 2.1
 _ALIQ_COFINS = 9.65
 _UF_SP = "SP"
@@ -72,9 +72,9 @@ def _tributo_por_nome(breakdown: list, nome: str) -> dict | None:
 
 class TestConsultarAliquotasImportacao:
     async def test_ncm_existente_retorna_ipi(self) -> None:
-        resp = await consultar_aliquotas_importacao(_NCM_CERVEJA)
-        assert resp.ncm == _NCM_CERVEJA
-        assert resp.aliquota_ipi == pytest.approx(_ALIQ_IPI_CERVEJA)
+        resp = await consultar_aliquotas_importacao(_NCM_REFERENCIA)
+        assert resp.ncm == _NCM_REFERENCIA
+        assert resp.aliquota_ipi == pytest.approx(_ALIQ_IPI_REFERENCIA)
 
     async def test_ncm_inexistente_retorna_ipi_none(self) -> None:
         resp = await consultar_aliquotas_importacao(_NCM_INEXISTENTE)
@@ -82,18 +82,18 @@ class TestConsultarAliquotasImportacao:
         assert len(resp.avisos) > 0
 
     async def test_defaults_pis_cofins_presentes(self) -> None:
-        resp = await consultar_aliquotas_importacao(_NCM_CERVEJA)
+        resp = await consultar_aliquotas_importacao(_NCM_REFERENCIA)
         assert resp.aliquota_pis_importacao_default == pytest.approx(2.1)
         assert resp.aliquota_cofins_importacao_default == pytest.approx(9.65)
 
     async def test_aviso_aliquota_ii_presente(self) -> None:
-        resp = await consultar_aliquotas_importacao(_NCM_CERVEJA)
+        resp = await consultar_aliquotas_importacao(_NCM_REFERENCIA)
         assert len(resp.aviso_aliquota_ii) > 10
         assert "II" in resp.aviso_aliquota_ii or "TEC" in resp.aviso_aliquota_ii
 
     async def test_ncm_com_pontuacao_aceito(self) -> None:
-        resp = await consultar_aliquotas_importacao("2203.00.00")
-        assert resp.ncm == _NCM_CERVEJA
+        resp = await consultar_aliquotas_importacao("2403.19.00")
+        assert resp.ncm == _NCM_REFERENCIA
 
     async def test_formato_invalido_levanta_erro(self) -> None:
         with pytest.raises(FiscalValidationError):
@@ -104,7 +104,7 @@ class TestConsultarAliquotasImportacao:
             await consultar_aliquotas_importacao("ABCD1234")
 
     async def test_descricao_ncm_preenchida_quando_encontrado(self) -> None:
-        resp = await consultar_aliquotas_importacao(_NCM_CERVEJA)
+        resp = await consultar_aliquotas_importacao(_NCM_REFERENCIA)
         assert resp.descricao_ncm is not None
         assert len(resp.descricao_ncm) > 3
 
@@ -117,7 +117,7 @@ class TestConsultarAliquotasImportacao:
 class TestCalcularTributosImportacao:
     async def test_ii_calculado_corretamente(self) -> None:
         resp = await calcular_tributos_importacao(
-            ncm=_NCM_CERVEJA,
+            ncm=_NCM_REFERENCIA,
             valor_aduaneiro=_VA,
             uf_importador=_UF_SP,
             aliquota_ii=_ALIQ_II,
@@ -132,7 +132,7 @@ class TestCalcularTributosImportacao:
 
     async def test_ipi_base_va_mais_ii(self) -> None:
         resp = await calcular_tributos_importacao(
-            ncm=_NCM_CERVEJA,
+            ncm=_NCM_REFERENCIA,
             valor_aduaneiro=_VA,
             uf_importador=_UF_SP,
             aliquota_ii=_ALIQ_II,
@@ -145,7 +145,7 @@ class TestCalcularTributosImportacao:
 
     async def test_pis_cofins_base_va(self) -> None:
         resp = await calcular_tributos_importacao(
-            ncm=_NCM_CERVEJA,
+            ncm=_NCM_REFERENCIA,
             valor_aduaneiro=_VA,
             uf_importador=_UF_SP,
             aliquota_ii=_ALIQ_II,
@@ -160,7 +160,7 @@ class TestCalcularTributosImportacao:
 
     async def test_icms_grossed_up_sp(self) -> None:
         resp = await calcular_tributos_importacao(
-            ncm=_NCM_CERVEJA,
+            ncm=_NCM_REFERENCIA,
             valor_aduaneiro=_VA,
             uf_importador=_UF_SP,
             aliquota_ii=_ALIQ_II,
@@ -173,7 +173,7 @@ class TestCalcularTributosImportacao:
 
     async def test_afrmm_zero_sem_frete_maritimo(self) -> None:
         resp = await calcular_tributos_importacao(
-            ncm=_NCM_CERVEJA,
+            ncm=_NCM_REFERENCIA,
             valor_aduaneiro=_VA,
             uf_importador=_UF_SP,
             aliquota_ii=_ALIQ_II,
@@ -186,7 +186,7 @@ class TestCalcularTributosImportacao:
 
     async def test_afrmm_calculado_com_frete(self) -> None:
         resp = await calcular_tributos_importacao(
-            ncm=_NCM_CERVEJA,
+            ncm=_NCM_REFERENCIA,
             valor_aduaneiro=_VA,
             uf_importador=_UF_SP,
             aliquota_ii=_ALIQ_II,
@@ -200,7 +200,7 @@ class TestCalcularTributosImportacao:
 
     async def test_siscomex_presente_no_breakdown(self) -> None:
         resp = await calcular_tributos_importacao(
-            ncm=_NCM_CERVEJA,
+            ncm=_NCM_REFERENCIA,
             valor_aduaneiro=_VA,
             uf_importador=_UF_SP,
             aliquota_ii=_ALIQ_II,
@@ -212,7 +212,7 @@ class TestCalcularTributosImportacao:
 
     async def test_custo_total_soma_va_mais_tributos(self) -> None:
         resp = await calcular_tributos_importacao(
-            ncm=_NCM_CERVEJA,
+            ncm=_NCM_REFERENCIA,
             valor_aduaneiro=_VA,
             uf_importador=_UF_SP,
             aliquota_ii=_ALIQ_II,
@@ -223,7 +223,7 @@ class TestCalcularTributosImportacao:
 
     async def test_total_tributos_soma_breakdown(self) -> None:
         resp = await calcular_tributos_importacao(
-            ncm=_NCM_CERVEJA,
+            ncm=_NCM_REFERENCIA,
             valor_aduaneiro=_VA,
             uf_importador=_UF_SP,
             aliquota_ii=_ALIQ_II,
@@ -242,7 +242,7 @@ class TestCalcularTributosImportacao:
           - custo_total = 10000 + 10572.99 = 20572.99
         """
         resp = await calcular_tributos_importacao(
-            ncm=_NCM_CERVEJA,
+            ncm=_NCM_REFERENCIA,
             valor_aduaneiro=_VA,
             uf_importador=_UF_SP,
             aliquota_ii=_ALIQ_II,
@@ -274,7 +274,7 @@ class TestCalcularTributosImportacao:
 
     async def test_disclaimers_presentes(self) -> None:
         resp = await calcular_tributos_importacao(
-            ncm=_NCM_CERVEJA,
+            ncm=_NCM_REFERENCIA,
             valor_aduaneiro=_VA,
             uf_importador=_UF_SP,
             aliquota_ii=_ALIQ_II,
@@ -302,7 +302,7 @@ class TestCalcularTributosImportacao:
     async def test_uf_invalida_levanta_erro(self) -> None:
         with pytest.raises(FiscalValidationError):
             await calcular_tributos_importacao(
-                ncm=_NCM_CERVEJA,
+                ncm=_NCM_REFERENCIA,
                 valor_aduaneiro=_VA,
                 uf_importador="XX",
                 aliquota_ii=_ALIQ_II,
@@ -311,7 +311,7 @@ class TestCalcularTributosImportacao:
     async def test_valor_aduaneiro_negativo_levanta_erro(self) -> None:
         with pytest.raises(FiscalValidationError):
             await calcular_tributos_importacao(
-                ncm=_NCM_CERVEJA,
+                ncm=_NCM_REFERENCIA,
                 valor_aduaneiro=-100.0,
                 uf_importador=_UF_SP,
                 aliquota_ii=_ALIQ_II,
@@ -320,7 +320,7 @@ class TestCalcularTributosImportacao:
     async def test_aliquota_negativa_levanta_erro(self) -> None:
         with pytest.raises(FiscalValidationError):
             await calcular_tributos_importacao(
-                ncm=_NCM_CERVEJA,
+                ncm=_NCM_REFERENCIA,
                 valor_aduaneiro=_VA,
                 uf_importador=_UF_SP,
                 aliquota_ii=-5.0,
@@ -328,21 +328,21 @@ class TestCalcularTributosImportacao:
 
     async def test_ncm_com_pontuacao_aceito(self) -> None:
         resp = await calcular_tributos_importacao(
-            ncm="2203.00.00",
+            ncm="2403.19.00",
             valor_aduaneiro=_VA,
             uf_importador=_UF_SP,
             aliquota_ii=_ALIQ_II,
         )
-        assert resp.ncm == _NCM_CERVEJA
+        assert resp.ncm == _NCM_REFERENCIA
 
     async def test_uf_minuscula_aceita(self) -> None:
         resp = await calcular_tributos_importacao(
-            ncm=_NCM_CERVEJA,
+            ncm=_NCM_REFERENCIA,
             valor_aduaneiro=_VA,
             uf_importador="sp",
             aliquota_ii=_ALIQ_II,
         )
-        assert resp.ncm == _NCM_CERVEJA
+        assert resp.ncm == _NCM_REFERENCIA
 
     async def test_aviso_quando_ipi_sem_entrada_no_banco(self) -> None:
         """NCM existente no banco mas sem alíquota IPI deve gerar aviso."""
@@ -361,7 +361,7 @@ class TestCalcularTributosImportacao:
     async def test_aliquota_ipi_override_tem_precedencia(self) -> None:
         """aliquota_ipi_override deve sobrescrever o valor do banco NCM."""
         resp = await calcular_tributos_importacao(
-            ncm=_NCM_CERVEJA,
+            ncm=_NCM_REFERENCIA,
             valor_aduaneiro=_VA,
             uf_importador=_UF_SP,
             aliquota_ii=_ALIQ_II,
@@ -374,13 +374,13 @@ class TestCalcularTributosImportacao:
     async def test_icms_go_diferente_sp(self) -> None:
         """Alíquota ICMS de GO deve gerar ICMS diferente do SP."""
         resp_sp = await calcular_tributos_importacao(
-            ncm=_NCM_CERVEJA,
+            ncm=_NCM_REFERENCIA,
             valor_aduaneiro=_VA,
             uf_importador="SP",
             aliquota_ii=_ALIQ_II,
         )
         resp_go = await calcular_tributos_importacao(
-            ncm=_NCM_CERVEJA,
+            ncm=_NCM_REFERENCIA,
             valor_aduaneiro=_VA,
             uf_importador="GO",
             aliquota_ii=_ALIQ_II,
@@ -394,7 +394,7 @@ class TestCalcularTributosImportacao:
     async def test_pis_cofins_diferenciados_com_override(self) -> None:
         """Alíquotas PIS/COFINS customizadas devem ser aplicadas."""
         resp = await calcular_tributos_importacao(
-            ncm=_NCM_CERVEJA,
+            ncm=_NCM_REFERENCIA,
             valor_aduaneiro=_VA,
             uf_importador=_UF_SP,
             aliquota_ii=_ALIQ_II,
@@ -410,7 +410,7 @@ class TestCalcularTributosImportacao:
     async def test_frete_negativo_levanta_erro(self) -> None:
         with pytest.raises(FiscalValidationError):
             await calcular_tributos_importacao(
-                ncm=_NCM_CERVEJA,
+                ncm=_NCM_REFERENCIA,
                 valor_aduaneiro=_VA,
                 uf_importador=_UF_SP,
                 aliquota_ii=_ALIQ_II,
@@ -420,7 +420,7 @@ class TestCalcularTributosImportacao:
     async def test_ipi_override_negativo_levanta_erro(self) -> None:
         with pytest.raises(FiscalValidationError):
             await calcular_tributos_importacao(
-                ncm=_NCM_CERVEJA,
+                ncm=_NCM_REFERENCIA,
                 valor_aduaneiro=_VA,
                 uf_importador=_UF_SP,
                 aliquota_ii=_ALIQ_II,
@@ -430,7 +430,7 @@ class TestCalcularTributosImportacao:
     async def test_modal_invalido_levanta_erro(self) -> None:
         with pytest.raises(FiscalValidationError):
             await calcular_tributos_importacao(
-                ncm=_NCM_CERVEJA,
+                ncm=_NCM_REFERENCIA,
                 valor_aduaneiro=_VA,
                 uf_importador=_UF_SP,
                 aliquota_ii=_ALIQ_II,
@@ -440,7 +440,7 @@ class TestCalcularTributosImportacao:
     async def test_valor_aduaneiro_zero_levanta_erro(self) -> None:
         with pytest.raises(FiscalValidationError):
             await calcular_tributos_importacao(
-                ncm=_NCM_CERVEJA,
+                ncm=_NCM_REFERENCIA,
                 valor_aduaneiro=0.0,
                 uf_importador=_UF_SP,
                 aliquota_ii=_ALIQ_II,
@@ -449,7 +449,7 @@ class TestCalcularTributosImportacao:
     async def test_modal_aereo_sem_afrmm(self) -> None:
         """Modal aéreo não deve gerar AFRMM."""
         resp = await calcular_tributos_importacao(
-            ncm=_NCM_CERVEJA,
+            ncm=_NCM_REFERENCIA,
             valor_aduaneiro=_VA,
             uf_importador=_UF_SP,
             aliquota_ii=_ALIQ_II,
@@ -462,7 +462,7 @@ class TestCalcularTributosImportacao:
     async def test_modal_terrestre_sem_afrmm(self) -> None:
         """Modal terrestre não deve gerar AFRMM."""
         resp = await calcular_tributos_importacao(
-            ncm=_NCM_CERVEJA,
+            ncm=_NCM_REFERENCIA,
             valor_aduaneiro=_VA,
             uf_importador=_UF_SP,
             aliquota_ii=_ALIQ_II,
@@ -474,7 +474,7 @@ class TestCalcularTributosImportacao:
     async def test_modal_postal_sem_afrmm(self) -> None:
         """Modal postal não deve gerar AFRMM."""
         resp = await calcular_tributos_importacao(
-            ncm=_NCM_CERVEJA,
+            ncm=_NCM_REFERENCIA,
             valor_aduaneiro=_VA,
             uf_importador=_UF_SP,
             aliquota_ii=_ALIQ_II,
@@ -487,7 +487,7 @@ class TestCalcularTributosImportacao:
         """AFRMM deve integrar a base do ICMS quando frete > 0."""
         frete = 5_000.0
         resp_com_frete = await calcular_tributos_importacao(
-            ncm=_NCM_CERVEJA,
+            ncm=_NCM_REFERENCIA,
             valor_aduaneiro=_VA,
             uf_importador=_UF_SP,
             aliquota_ii=_ALIQ_II,
@@ -495,7 +495,7 @@ class TestCalcularTributosImportacao:
             frete_maritimo=frete,
         )
         resp_sem_frete = await calcular_tributos_importacao(
-            ncm=_NCM_CERVEJA,
+            ncm=_NCM_REFERENCIA,
             valor_aduaneiro=_VA,
             uf_importador=_UF_SP,
             aliquota_ii=_ALIQ_II,

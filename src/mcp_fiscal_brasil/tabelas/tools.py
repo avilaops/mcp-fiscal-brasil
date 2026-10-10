@@ -16,6 +16,7 @@ from .schemas import (
     CESTResponse,
     CFOPResponse,
     CSTResponse,
+    ExcecaoTipi,
     ICMSAliquotaResponse,
     NCMResponse,
 )
@@ -69,6 +70,9 @@ async def consultar_ncm(ncm: str) -> NCMResponse:
         codigo=dado["codigo"],
         descricao=dado["descricao"],
         aliquota_ipi=dado.get("aliquota_ipi"),
+        ipi_nao_tributado=dado.get("ipi_nao_tributado", False),
+        excecoes_tipi=[ExcecaoTipi(**ex) for ex in dado.get("excecoes_tipi", [])],
+        fonte_ipi=dado.get("fonte_ipi"),
         unidade_tributavel=dado.get("unidade_tributavel"),
         ex_tipi=dado.get("ex_tipi"),
         capitulo=dado["codigo"][:2],

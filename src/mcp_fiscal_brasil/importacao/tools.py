@@ -186,11 +186,18 @@ async def consultar_aliquotas_importacao(ncm: str) -> AliquotasImportacaoRespons
     else:
         descricao_ncm = dado_ncm.get("descricao")
         aliquota_ipi = dado_ncm.get("aliquota_ipi")
-        if aliquota_ipi is None:
+        if dado_ncm.get("ipi_nao_tributado"):
             avisos.append(
-                f"NCM '{codigo}' encontrado no banco mas sem alíquota IPI registrada. "
-                "Pode ser posição genérica (capítulo/posição) ou produto com IPI = 0%. "
-                "Verifique a TIPI vigente."
+                f"NCM '{codigo}': a TIPI marca o produto como NT (não tributado pelo IPI)."
+            )
+        elif aliquota_ipi is None:
+            avisos.append(
+                f"NCM '{codigo}' está na nomenclatura, mas a TIPI vigente não traz alíquota para ele. "
+                "Confira a TIPI."
+            )
+        if dado_ncm.get("excecoes_tipi"):
+            avisos.append(
+                f"NCM '{codigo}' tem exceções (EX) na TIPI com outra alíquota; veja consultar_ncm."
             )
 
     return AliquotasImportacaoResponse(
@@ -343,7 +350,9 @@ async def calcular_tributos_importacao(
         if aliq_ipi_banco is None:
             aliq_ipi = 0.0
             avisos.append(
-                f"Alíquota IPI não encontrada no banco para NCM '{codigo}'. "
+                f"NCM '{codigo}': a TIPI marca o produto como NT (não tributado); IPI = 0."
+                if dado_ncm.get("ipi_nao_tributado")
+                else f"Alíquota IPI não encontrada na TIPI para NCM '{codigo}'. "
                 "Assumindo IPI = 0%. Verifique a TIPI vigente."
             )
         else:

@@ -236,7 +236,10 @@ class TestNCMLoader:
     def test_ncm_cerveja_com_ipi(self) -> None:
         dado = buscar_ncm("22030000")
         assert dado is not None
-        assert dado["aliquota_ipi"] == 30.0
+        # TIPI vigente (Decreto nº 11.158/2022 e atualizações).
+        assert dado["aliquota_ipi"] == 3.9
+        assert dado["ipi_nao_tributado"] is False
+        assert "TIPI" in dado["fonte_ipi"]
 
 
 class TestCESTLoader:
@@ -511,8 +514,22 @@ class TestTabelasOficiais:
         assert dado["unidade_tributavel"] == "KG"
         assert dado["hierarquia"].endswith(dado["descricao"])
         assert "Siscomex" in dado["fonte"]
-        # Linha nova: sem alíquota de IPI inventada.
-        assert dado["aliquota_ipi"] is None
+        # A alíquota vem da TIPI, com a exceção (EX) que o código tem.
+        assert dado["aliquota_ipi"] == 13.0
+        assert dado["excecoes_tipi"] == [
+            {
+                "ex": "01",
+                "descricao": "Peças plásticas moldadas por injeção",
+                "aliquota_ipi": 20.0,
+                "ipi_nao_tributado": False,
+            }
+        ]
+
+    def test_ncm_nao_tributado_nao_vira_zero(self) -> None:
+        cavalo = buscar_ncm("0101.21.00")
+        assert cavalo is not None
+        assert cavalo["aliquota_ipi"] is None
+        assert cavalo["ipi_nao_tributado"] is True
 
     def test_ncm_da_amostra_mantem_a_aliquota_de_ipi(self) -> None:
         cerveja = buscar_ncm("22030000")

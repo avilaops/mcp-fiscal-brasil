@@ -16,6 +16,11 @@ portadas seletivamente para o repositório canônico.
 
 ### Novas funcionalidades
 
+* `consultar_ncm` e `consultar_aliquotas_importacao` trazem a alíquota de IPI da
+  TIPI oficial inteira (Decreto nº 11.158/2022, atualizada até o ADE RFB nº 1 de
+  30/01/2026): 10.515 códigos, a marca de NT (não tributado) e as 582 exceções
+  (EX). A amostra antiga, que tinha alíquotas anteriores às reduções de 2022,
+  saiu. `scripts/atualizar_tabelas_oficiais.py --tipi tipi.xlsx` refaz a carga.
 * consulta real de status da SEFAZ via NfeStatusServico4 (mTLS), substituindo
   o antigo proxy da BrasilAPI que retornava 404 para toda UF
 * endpoint `GET /v1/fiscal/certificado/status` informa apenas

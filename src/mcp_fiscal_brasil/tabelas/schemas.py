@@ -5,12 +5,34 @@ from pydantic import Field
 from ..shared.schemas import BaseResponse
 
 
+class ExcecaoTipi(BaseResponse):
+    """Uma exceção (EX) da TIPI: o mesmo NCM com outra alíquota para um produto descrito."""
+
+    ex: str = Field(description="Número da exceção, com dois dígitos")
+    descricao: str = Field(description="Produto a que a exceção se aplica")
+    aliquota_ipi: float | None = Field(default=None, description="Alíquota do IPI em percentual")
+    ipi_nao_tributado: bool = Field(default=False, description="A TIPI marca a exceção como NT")
+
+
 class NCMResponse(BaseResponse):
     """Resposta de consulta de NCM (Nomenclatura Comum do Mercosul)."""
 
     codigo: str = Field(description="Código NCM com 8 dígitos")
     descricao: str = Field(description="Descrição do produto conforme TIPI")
-    aliquota_ipi: float | None = Field(default=None, description="Alíquota do IPI em percentual")
+    aliquota_ipi: float | None = Field(
+        default=None,
+        description="Alíquota do IPI em percentual, da TIPI. Vazia quando o produto é NT ou a TIPI não traz o código",
+    )
+    ipi_nao_tributado: bool = Field(
+        default=False,
+        description="A TIPI marca o código como NT (não tributado), que não é o mesmo que 0%",
+    )
+    excecoes_tipi: list[ExcecaoTipi] = Field(
+        default_factory=list, description="Exceções (EX) da TIPI para este código"
+    )
+    fonte_ipi: str | None = Field(
+        default=None, description="De onde vem a alíquota do IPI e de quando é"
+    )
     unidade_tributavel: str | None = Field(
         default=None, description="Unidade tributável (ex: UN, KG, L)"
     )
