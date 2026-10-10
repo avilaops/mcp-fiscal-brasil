@@ -129,10 +129,32 @@ def _gerar(
     )
 
 
-def _desenhar_dacte(xml: str) -> bytes:
-    from brazilfiscalreport.dacte import Dacte
+def _xml_para_o_dacte(xml: str) -> tuple[str, bool]:
+    """Ajusta o XML so para o desenho do DACTE. Devolve o XML e se ha IBS/CBS.
 
-    return bytes(Dacte(xml=xml).output())
+    A biblioteca escreve no quadro OBSERVACOES apenas o `xTexto` dos grupos
+    `ObsCont`/`ObsFisco` e ignora `compl/xObs`, que e onde a observacao do
+    emitente vai. Para ela aparecer, a copia entregue ao desenho ganha um
+    `ObsCont` com o mesmo texto. O XML do documento nao e tocado: esta copia
+    serve so de entrada para o PDF.
+    """
+    raiz = parse_xml(xml.encode("utf-8"))
+    ns = {"d": NS_CTE}
+    compl = raiz.find(".//d:infCte/d:compl", ns)
+    observacao = compl.findtext("d:xObs", namespaces=ns) if compl is not None else None
+    if compl is not None and observacao and observacao.strip():
+        extra = etree.SubElement(compl, f"{{{NS_CTE}}}ObsCont", xCampo="OBSERVACAO")
+        etree.SubElement(extra, f"{{{NS_CTE}}}xTexto").text = observacao.strip()
+    tem_ibs_cbs = raiz.find(".//d:infCte/d:imp/d:IBSCBS", ns) is not None
+    return etree.tostring(raiz, encoding="unicode"), tem_ibs_cbs
+
+
+def _desenhar_dacte(xml: str) -> bytes:
+    from brazilfiscalreport.dacte import Dacte, DacteConfig
+
+    ajustado, tem_ibs_cbs = _xml_para_o_dacte(xml)
+    # O quadro de IBS/CBS da biblioteca vem desligado por padrao.
+    return bytes(Dacte(xml=ajustado, config=DacteConfig(display_ibs_cbs=tem_ibs_cbs)).output())
 
 
 def _desenhar_damdfe(xml: str) -> bytes:

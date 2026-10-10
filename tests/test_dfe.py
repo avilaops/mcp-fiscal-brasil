@@ -366,6 +366,47 @@ class TestDocumentosAuxiliares:
         assert resultado.nome_arquivo == f"DAMDFE_{amostras.chave('58', 7)}.pdf"
         assert (resultado.numero, resultado.autorizado) == ("7", True)
 
+    @staticmethod
+    def _textos_do_pdf(pdf: bytes) -> str:
+        import re
+        import zlib
+
+        trechos: list[str] = []
+        for achado in re.finditer(rb"stream\r?\n(.*?)endstream", pdf, re.S):
+            try:
+                conteudo = zlib.decompress(achado.group(1).strip(b"\r\n"))
+            except zlib.error:
+                continue
+            trechos += [
+                t.decode("latin-1", "ignore")
+                for t in re.findall(rb"\(((?:[^()\\]|\\.)*)\)\s*Tj", conteudo)
+            ]
+        return " | ".join(trechos)
+
+    def test_dacte_mostra_a_observacao_do_emitente_e_o_ibs_cbs(self) -> None:
+        # A biblioteca ignora compl/xObs e traz o quadro de IBS/CBS desligado.
+        xml = (
+            amostras.cte(com_protocolo=True)
+            .replace(
+                "</ide>",
+                "</ide><compl><xObs>Veiculo placa ABC1D23. Motorista Joao da Silva.</xObs></compl>",
+            )
+            .replace(
+                "</ICMS></imp>",
+                "</ICMS><IBSCBS><CST>000</CST><cClassTrib>000001</cClassTrib><gIBSCBS><vBC>440.00</vBC>"
+                "<gIBSUF><pIBSUF>0.10</pIBSUF><vIBSUF>0.44</vIBSUF></gIBSUF>"
+                "<gIBSMun><pIBSMun>0.00</pIBSMun><vIBSMun>0.00</vIBSMun></gIBSMun><vIBS>0.44</vIBS>"
+                "<gCBS><pCBS>0.90</pCBS><vCBS>3.96</vCBS></gCBS></gIBSCBS></IBSCBS><vTotDFe>500.00</vTotDFe></imp>",
+            )
+        )
+        assert validar_xml_fiscal(xml)["valido"] is True
+        texto = self._textos_do_pdf(base64.b64decode(gerar_dacte(xml).pdf_base64))
+        assert "Motorista Joao da Silva" in texto
+        assert "IBS E CBS" in texto
+
+        sem_nada = self._textos_do_pdf(base64.b64decode(gerar_dacte(amostras.cte()).pdf_base64))
+        assert "IBS E CBS" not in sem_nada
+
     def test_sem_protocolo_gera_e_avisa_que_nao_esta_autorizado(self) -> None:
         assert gerar_dacte(amostras.cte()).autorizado is False
         assert gerar_damdfe(amostras.mdfe()).autorizado is False
