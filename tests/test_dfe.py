@@ -202,6 +202,33 @@ class TestValidacaoDeEsquema:
         sem_esquema = validar_xml_fiscal(evento("<evInventado><x>1</x></evInventado>"))
         assert any("evInventado" in aviso for aviso in sem_esquema["avisos"])
 
+    def test_evento_cujo_arquivo_tem_nome_diferente_do_elemento(self) -> None:
+        # Inclusao de DF-e do MDF-e: o elemento e evIncDFeMDFe, o arquivo e evInclusaoDFeMDFe.
+        chave = amostras.chave("58", 7)
+
+        def evento(detalhe: str) -> str:
+            return (
+                '<eventoMDFe xmlns="http://www.portalfiscal.inf.br/mdfe" versao="3.00">'
+                f'<infEvento Id="ID110115{chave}001"><cOrgao>35</cOrgao><tpAmb>2</tpAmb>'
+                f"<CNPJ>{amostras.CNPJ_EMITENTE}</CNPJ><chMDFe>{chave}</chMDFe>"
+                "<dhEvento>2026-10-10T10:00:00-03:00</dhEvento><tpEvento>110115</tpEvento><nSeqEvento>1</nSeqEvento>"
+                f'<detEvento versaoEvento="3.00">{detalhe}</detEvento></infEvento>'
+                f"{amostras.assinatura('ID110115' + chave + '001')}</eventoMDFe>"
+            )
+
+        bom = evento(
+            "<evIncDFeMDFe><descEvento>Inclusao DF-e</descEvento><nProt>935260000000001</nProt>"
+            "<cMunCarrega>3549805</cMunCarrega><xMunCarrega>Sao Jose do Rio Preto</xMunCarrega>"
+            "<infDoc><cMunDescarga>3550308</cMunDescarga><xMunDescarga>Sao Paulo</xMunDescarga>"
+            f"<chNFe>{amostras.CHAVE_NFE}</chNFe></infDoc></evIncDFeMDFe>"
+        )
+        resultado = validar_xml_fiscal(bom)
+        assert resultado["valido"] is True, resultado["erros"]
+        assert "mdfe/evInclusaoDFeMDFe_v3.00.xsd" in resultado["esquemas_usados"]
+        assert not any("sem esquema" in aviso for aviso in resultado["avisos"])
+        ruim = validar_xml_fiscal(bom.replace("<cMunCarrega>3549805<", "<cMunCarrega>35<"))
+        assert (ruim["erros"][0]["origem"], ruim["erros"][0]["campo"]) == ("evento", "cMunCarrega")
+
     def test_nfe_sem_assinatura_e_recusada_pelo_esquema(self) -> None:
         chave = amostras.CHAVE_NFE
         xml = (

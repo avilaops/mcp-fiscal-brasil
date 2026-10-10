@@ -140,8 +140,6 @@ _MODAIS: dict[str, dict[str, str]] = {
     },
 }
 
-_VERSAO_DO_DETALHE = {"cte": "4.00", "mdfe": "3.00"}
-
 # Onde esta a chave e de que campos ela e feita, por tipo de documento.
 _CAMPOS_DA_CHAVE: dict[str, dict[str, str]] = {
     "nfe": {"inf": "infNFe", "prefixo": "NFe", "numero": "nNF", "codigo": "cNF"},
@@ -172,6 +170,21 @@ def _local(elemento: etree._Element) -> str:
 def _esquema(caminho_relativo: str) -> etree.XMLSchema:
     """Compila um XSD do pacote. Os `include` sao resolvidos pela pasta do arquivo."""
     return etree.XMLSchema(etree.parse(str(_ESQUEMAS / caminho_relativo)))
+
+
+@lru_cache(maxsize=4)
+def _detalhes_de_evento(tipo: str) -> dict[str, str]:
+    """Elemento filho de detEvento -> arquivo XSD, lido dos proprios esquemas.
+
+    O nome do arquivo nem sempre e o do elemento: o da inclusao de DF-e do
+    MDF-e se chama evInclusaoDFeMDFe e declara o elemento evIncDFeMDFe.
+    """
+    indice: dict[str, str] = {}
+    for arquivo in sorted((_ESQUEMAS / tipo).glob("ev*.xsd")):
+        raiz = etree.parse(str(arquivo)).getroot().find("{http://www.w3.org/2001/XMLSchema}element")
+        if raiz is not None and raiz.get("name"):
+            indice[str(raiz.get("name"))] = arquivo.name
+    return indice
 
 
 def _sem_namespace(texto: str) -> str:
@@ -389,18 +402,18 @@ def validar_xml_fiscal(xml_content: str | bytes, tipo: str | None = None) -> dic
                 relativo = f"{achado}/{arquivo}"
                 usados.append(relativo)
                 erros += _erros_do_esquema(_esquema(relativo), filho, "modal")
-        versao_detalhe = _VERSAO_DO_DETALHE[achado]
+        detalhes = _detalhes_de_evento(achado)
         for detalhe in raiz.iter(f"{{{ns}}}detEvento"):
             for filho in detalhe:
                 if not isinstance(filho.tag, str):
                     continue
-                do_detalhe = _ESQUEMAS / achado / f"{_local(filho)}_v{versao_detalhe}.xsd"
-                if not do_detalhe.is_file():
+                arquivo_do_detalhe = detalhes.get(_local(filho))
+                if arquivo_do_detalhe is None:
                     avisos.append(
                         f"Detalhe de evento <{_local(filho)}> sem esquema neste servico: nao foi conferido."
                     )
                     continue
-                relativo = f"{achado}/{do_detalhe.name}"
+                relativo = f"{achado}/{arquivo_do_detalhe}"
                 usados.append(relativo)
                 erros += _erros_do_esquema(_esquema(relativo), filho, "evento")
 
