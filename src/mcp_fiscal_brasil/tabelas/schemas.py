@@ -17,6 +17,11 @@ class NCMResponse(BaseResponse):
     ex_tipi: str | None = Field(default=None, description="Código de exceção TIPI (EX), se existir")
     capitulo: str = Field(description="Capítulo TIPI (primeiros 2 dígitos)")
     posicao: str = Field(description="Posição TIPI (primeiros 4 dígitos)")
+    hierarquia: str | None = Field(
+        default=None,
+        description="Descrição da posição até o item (a do código sozinha pode ser só 'Outros')",
+    )
+    fonte: str | None = Field(default=None, description="De onde vem a nomenclatura e de quando é")
 
 
 class CFOPResponse(BaseResponse):
@@ -29,6 +34,16 @@ class CFOPResponse(BaseResponse):
         description="Âmbito da operação: 'estadual', 'interestadual' ou 'exterior'"
     )
     grupo: str = Field(description="Número do grupo CFOP (1=entrada est., 2=entrada int., etc.)")
+    nota_explicativa: str | None = Field(
+        default=None, description="Nota explicativa oficial do código"
+    )
+    vigencia_inicio: str | None = Field(default=None, description="Início de vigência (AAAA-MM-DD)")
+    vigencia_fim: str | None = Field(default=None, description="Fim de vigência; nulo = vigente")
+    indicadores: list[str] = Field(
+        default_factory=list,
+        description="Usos marcados na tabela oficial: nfe, transporte, comunicacao, devolucao, retorno, anulacao, remessa, combustivel, exclusao_ibs_cbs",
+    )
+    fonte: str | None = Field(default=None, description="Tabela oficial usada e a data dela")
 
 
 class CSTResponse(BaseResponse):

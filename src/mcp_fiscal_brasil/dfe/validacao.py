@@ -50,10 +50,11 @@ PACOTES: dict[str, dict[str, Any]] = {
         "notas_tecnicas": ["NT 2025.002 v1.50", "NT 2026.007 v1.00"],
         "fonte": "https://www.nfe.fazenda.gov.br/portal (Documentos > Esquemas XML)",
         "complementos": [
-            "procNFe, inutNFe e consSitNFe do Pacote de Liberacao 9 (leiaute 4.00, sem mudanca desde entao)",
-            "Evento de cancelamento v1.00 (atualizado em 21/12/2018)",
-            "Carta de correcao v1.00 (PL Evento CCe v1.01, 30/05/2014)",
-            "Eventos da NT 2025.002 v1.40 - RTC (publicado em 27/07/2026)",
+            "PL_010d v1.03 (NT 2026.004 v1.01, CNPJ alfanumerico, 10/07/2026): envelope de evento, "
+            "consulta de situacao e inutilizacao",
+            "procNFe e inutNFe (elemento raiz) do Pacote de Liberacao 9, leiaute 4.00",
+            "detEvento do cancelamento (e110111, 21/12/2018) e da carta de correcao (e110110, 30/05/2014)",
+            "detEvento dos eventos da NT 2025.002 v1.40 - RTC (27/07/2026)",
         ],
     },
     "cte": {
@@ -83,8 +84,13 @@ _RAIZES: dict[str, dict[str, str]] = {
     "nfe": {
         "NFe": "nfe_v4.00.xsd",
         "nfeProc": "procNFe_v4.00.xsd",
-        "inutNFe": "inutNFe_v4.00.xsd",
-        "consSitNFe": "consSitNFe_v4.00.xsd",
+        "inutNFe": "pl010d-nfe/inutNFe_v4.00.xsd",
+        "ProcInutNFe": "pl010d-nfe/procInutNFe_v4.00.xsd",
+        "consSitNFe": "pl010d-nfe/consSitNFe_v4.00.xsd",
+        # Envelope generico de evento (PL_010d): confere infEvento e a assinatura
+        # e aceita CNPJ alfanumerico. O detEvento e conferido a parte, pelo tpEvento.
+        "envEvento": "pl010d-evento/envEvento_v1.00.xsd",
+        "procEventoNFe": "pl010d-evento/procEventoNFe_v1.00.xsd",
     },
     "cte": {
         "CTe": "cte_v4.00.xsd",
@@ -112,25 +118,8 @@ _RAIZES: dict[str, dict[str, str]] = {
     },
 }
 
-# Eventos da NF-e com envelope proprio no pacote: tpEvento -> (pasta, raiz -> arquivo).
-_EVENTOS_NFE: dict[str, tuple[str, dict[str, str]]] = {
-    "110111": (
-        "evento-cancelamento",
-        {
-            "envEvento": "envEventoCancNFe_v1.00.xsd",
-            "evento": "eventoCancNFe_v1.00.xsd",
-            "procEventoNFe": "procEventoCancNFe_v1.00.xsd",
-        },
-    ),
-    "110110": (
-        "evento-cce",
-        {
-            "envEvento": "envCCe_v1.00.xsd",
-            "evento": "CCe_v1.00.xsd",
-            "procEventoNFe": "procCCeNFe_v1.00.xsd",
-        },
-    ),
-}
+# Onde procurar o XSD do detEvento de cada tpEvento da NF-e (e<tpEvento>_v1.00.xsd).
+_PASTAS_DE_EVENTO_NFE = ("evento-cancelamento", "evento-cce", "evento-rtc")
 
 # Filho de infModal -> arquivo XSD do modal.
 _MODAIS: dict[str, dict[str, str]] = {
@@ -285,17 +274,14 @@ def _conferir_chave(
     return partes.chave, erros
 
 
-def _evento_da_nfe(raiz: etree._Element, ns: str) -> tuple[str | None, str | None, list[str]]:
-    """Escolhe o XSD do envelope de evento da NF-e pelo tpEvento."""
-    tipo_evento = None
-    achado = raiz.find(f".//{{{ns}}}tpEvento")
-    if achado is not None and achado.text:
-        tipo_evento = achado.text.strip()
-    if tipo_evento in _EVENTOS_NFE:
-        pasta, raizes = _EVENTOS_NFE[tipo_evento]
-        arquivo = raizes.get(_local(raiz))
-        return (f"nfe/{pasta}/{arquivo}" if arquivo else None), tipo_evento, []
-    return None, tipo_evento, []
+def _detalhe_do_evento_nfe(tipo_evento: str | None) -> str | None:
+    """Caminho do XSD do detEvento de um tpEvento da NF-e, ou None se nao ha."""
+    if not tipo_evento or not tipo_evento.isdigit():
+        return None
+    for pasta in _PASTAS_DE_EVENTO_NFE:
+        if (_ESQUEMAS / "nfe" / pasta / f"e{tipo_evento}_v1.00.xsd").is_file():
+            return f"nfe/{pasta}/e{tipo_evento}_v1.00.xsd"
+    return None
 
 
 def validar_xml_fiscal(xml_content: str | bytes, tipo: str | None = None) -> dict[str, Any]:
@@ -350,33 +336,37 @@ def validar_xml_fiscal(xml_content: str | bytes, tipo: str | None = None) -> dic
     caminho = None
     if nome in _RAIZES[achado]:
         caminho = f"{achado}/{_RAIZES[achado][nome]}"
-    elif achado == "nfe" and nome in ("envEvento", "evento", "procEventoNFe"):
-        caminho, tipo_evento, _ = _evento_da_nfe(raiz, ns)
-        if caminho is None:
-            # Eventos da reforma tributaria (e os demais sem envelope no pacote):
-            # o pacote traz so o XSD do detEvento, conferido logo abaixo.
-            detalhe = _ESQUEMAS / "nfe" / "evento-rtc" / f"e{tipo_evento}_v1.00.xsd"
-            if tipo_evento and detalhe.is_file():
-                relativo = f"nfe/evento-rtc/{detalhe.name}"
-                usados.append(relativo)
-                for det in raiz.iter(f"{{{ns}}}detEvento"):
-                    erros += _erros_do_esquema(_esquema(relativo), det, "evento")
-                avisos.append(
-                    "Evento sem envelope proprio no pacote: so o detEvento foi "
-                    "conferido; infEvento e a assinatura nao foram."
-                )
-            else:
-                raise XmlFiscalInvalidoError(
-                    f"Nao ha esquema neste servico para o evento {tipo_evento or 'sem tpEvento'} da NF-e."
-                )
+    elif achado == "nfe" and nome == "evento":
+        # O pacote nao declara <evento> como raiz: so dentro de envEvento. O
+        # detEvento e conferido abaixo; o resto, so quando vier no envelope.
+        avisos.append(
+            "Evento avulso (<evento> sem <envEvento>): so o detEvento foi conferido. "
+            "Envie dentro de envEvento para conferir infEvento e a estrutura da assinatura."
+        )
     else:
         raise XmlFiscalInvalidoError(
             f"Nao ha esquema neste servico para o elemento raiz <{nome}> de {achado}."
         )
 
+    if achado == "nfe" and nome in ("envEvento", "evento", "procEventoNFe"):
+        for infe in raiz.iter(f"{{{ns}}}infEvento"):
+            tipo_evento = _texto(infe, ns, "tpEvento")
+            relativo = _detalhe_do_evento_nfe(tipo_evento)
+            detalhe = infe.find(f"{{{ns}}}detEvento")
+            if detalhe is None:
+                continue
+            if relativo is None:
+                avisos.append(
+                    f"Evento {tipo_evento or 'sem tpEvento'} sem esquema de detEvento neste servico: "
+                    "o detalhe nao foi conferido."
+                )
+                continue
+            usados.append(relativo)
+            erros += _erros_do_esquema(_esquema(relativo), detalhe, "evento")
+
     if caminho is not None:
-        usados.append(caminho)
-        erros += _erros_do_esquema(_esquema(caminho), raiz, "esquema")
+        usados.insert(0, caminho)
+        erros = _erros_do_esquema(_esquema(caminho), raiz, "esquema") + erros
 
     # Partes que o leiaute principal nao confere (xs:any).
     if achado in _MODAIS:

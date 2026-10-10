@@ -59,8 +59,8 @@ async def consultar_ncm(ncm: str) -> NCMResponse:
     if dado is None:
         raise FiscalValidationError(
             f"NCM '{codigo_limpo}' não encontrado. "
-            "O banco NCM pode estar incompleto; execute scripts/build_tabelas_db.py "
-            "para popular a tabela TIPI completa.",
+            "A base traz a nomenclatura NCM vigente inteira; confira o codigo "
+            "(8 digitos) ou se ele foi extinto.",
             field="ncm",
             value=ncm,
         )
@@ -73,6 +73,8 @@ async def consultar_ncm(ncm: str) -> NCMResponse:
         ex_tipi=dado.get("ex_tipi"),
         capitulo=dado["codigo"][:2],
         posicao=dado["codigo"][:4],
+        hierarquia=dado.get("hierarquia"),
+        fonte=dado.get("fonte"),
     )
 
 
@@ -115,6 +117,11 @@ async def consultar_cfop(cfop: str) -> CFOPResponse:
         tipo=dado["tipo"],
         aplicacao=dado["aplicacao"],
         grupo=dado["grupo"],
+        nota_explicativa=dado.get("nota_explicativa"),
+        vigencia_inicio=dado.get("vigencia_inicio"),
+        vigencia_fim=dado.get("vigencia_fim"),
+        indicadores=dado.get("indicadores", []),
+        fonte=dado.get("fonte"),
     )
 
 
@@ -185,8 +192,8 @@ async def consultar_cest(cest: str) -> CESTResponse:
     if dado is None:
         raise FiscalValidationError(
             f"CEST '{codigo_limpo}' não encontrado. "
-            "O banco CEST pode estar incompleto; execute scripts/build_tabelas_db.py "
-            "para popular a tabela completa (Convênio ICMS 92/2015).",
+            "A base de CEST deste servico e uma AMOSTRA (51 codigos), nao a tabela do Convenio ICMS 142/18: "
+            "codigo ausente aqui nao quer dizer codigo invalido.",
             field="cest",
             value=cest,
         )

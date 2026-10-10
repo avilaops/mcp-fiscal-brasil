@@ -215,26 +215,75 @@ class TestValidacaoDeEsquema:
         assert resultado["chave_acesso"] == chave
         assert resultado["total_de_erros"] >= 1
 
-    def test_evento_de_cancelamento_da_nfe_usa_o_esquema_do_proprio_evento(self) -> None:
-        chave = amostras.CHAVE_NFE
-        xml = (
+    @staticmethod
+    def _cancelamento_nfe(
+        chave: str, cnpj: str, justificativa: str = "Pedido cancelado pelo cliente"
+    ) -> str:
+        return (
             '<envEvento xmlns="http://www.portalfiscal.inf.br/nfe" versao="1.00"><idLote>1</idLote>'
             '<evento versao="1.00">'
             f'<infEvento Id="ID110111{chave}01"><cOrgao>35</cOrgao><tpAmb>2</tpAmb>'
-            f"<CNPJ>{amostras.CNPJ_EMITENTE}</CNPJ><chNFe>{chave}</chNFe>"
+            f"<CNPJ>{cnpj}</CNPJ><chNFe>{chave}</chNFe>"
             "<dhEvento>2026-10-10T10:00:00-03:00</dhEvento><tpEvento>110111</tpEvento>"
             "<nSeqEvento>1</nSeqEvento><verEvento>1.00</verEvento>"
             '<detEvento versao="1.00"><descEvento>Cancelamento</descEvento>'
-            "<nProt>135260000000001</nProt><xJust>Pedido cancelado pelo cliente</xJust></detEvento>"
+            f"<nProt>135260000000001</nProt><xJust>{justificativa}</xJust></detEvento>"
             f"</infEvento>{amostras.assinatura('ID110111' + chave + '01')}</evento></envEvento>"
         )
-        resultado = validar_xml_fiscal(xml)
+
+    def test_evento_de_cancelamento_da_nfe_confere_envelope_e_detalhe(self) -> None:
+        chave = amostras.CHAVE_NFE
+        resultado = validar_xml_fiscal(self._cancelamento_nfe(chave, amostras.CNPJ_EMITENTE))
         assert resultado["valido"] is True, resultado["erros"]
         assert resultado["esquemas_usados"] == [
-            "nfe/evento-cancelamento/envEventoCancNFe_v1.00.xsd"
+            "nfe/pl010d-evento/envEvento_v1.00.xsd",
+            "nfe/evento-cancelamento/e110111_v1.00.xsd",
         ]
-        curto = validar_xml_fiscal(xml.replace("Pedido cancelado pelo cliente", "curta"))
-        assert curto["erros"][0]["campo"] == "xJust"
+        curto = validar_xml_fiscal(self._cancelamento_nfe(chave, amostras.CNPJ_EMITENTE, "curta"))
+        assert (curto["erros"][0]["origem"], curto["erros"][0]["campo"]) == ("evento", "xJust")
+        # Erro no envelope (orgao inexistente) vem antes e com outra origem.
+        orgao = validar_xml_fiscal(
+            self._cancelamento_nfe(chave, amostras.CNPJ_EMITENTE).replace(
+                "<cOrgao>35<", "<cOrgao>99999<"
+            )
+        )
+        assert (orgao["erros"][0]["origem"], orgao["erros"][0]["campo"]) == ("esquema", "cOrgao")
+
+    def test_evento_e_inutilizacao_da_nfe_com_cnpj_alfanumerico(self) -> None:
+        # NT 2026.004: CNPJ com letras no evento, na chave e na inutilizacao.
+        cnpj = "12ABC34501DE35"
+        chave = amostras.chave("55", 123, cnpj=cnpj)
+        evento = validar_xml_fiscal(self._cancelamento_nfe(chave, cnpj))
+        assert evento["valido"] is True, evento["erros"]
+
+        identificador = f"ID35{'26'}{cnpj}55001000000010000000020"
+        inutilizacao = (
+            '<inutNFe xmlns="http://www.portalfiscal.inf.br/nfe" versao="4.00">'
+            f'<infInut Id="{identificador}"><tpAmb>2</tpAmb><xServ>INUTILIZAR</xServ><cUF>35</cUF>'
+            f"<ano>26</ano><CNPJ>{cnpj}</CNPJ><mod>55</mod><serie>1</serie><nNFIni>10</nNFIni>"
+            "<nNFFin>20</nNFFin><xJust>Falha na numeracao do sistema</xJust></infInut>"
+            f"{amostras.assinatura(identificador)}</inutNFe>"
+        )
+        resultado = validar_xml_fiscal(inutilizacao)
+        assert resultado["valido"] is True, resultado["erros"]
+        assert resultado["esquemas_usados"] == ["nfe/pl010d-nfe/inutNFe_v4.00.xsd"]
+
+    def test_evento_avulso_e_evento_sem_esquema_de_detalhe_avisam(self) -> None:
+        chave = amostras.CHAVE_NFE
+        envelope = self._cancelamento_nfe(chave, amostras.CNPJ_EMITENTE)
+        inicio = envelope.index("<evento ")
+        avulso = envelope[inicio : envelope.index("</envEvento>")].replace(
+            '<evento versao="1.00">',
+            '<evento xmlns="http://www.portalfiscal.inf.br/nfe" versao="1.00">',
+        )
+        resultado = validar_xml_fiscal(avulso)
+        assert resultado["esquemas_usados"] == ["nfe/evento-cancelamento/e110111_v1.00.xsd"]
+        assert any("Evento avulso" in aviso for aviso in resultado["avisos"])
+
+        desconhecido = validar_xml_fiscal(
+            envelope.replace("<tpEvento>110111<", "<tpEvento>999999<")
+        )
+        assert any("999999" in aviso for aviso in desconhecido["avisos"])
 
     def test_recusas(self) -> None:
         with pytest.raises(XmlFiscalInvalidoError, match="vazio"):

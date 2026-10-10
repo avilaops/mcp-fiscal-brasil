@@ -464,3 +464,62 @@ class TestRegister:
         from mcp_fiscal_brasil.tabelas import register
 
         assert callable(register)
+
+
+class TestTabelasOficiais:
+    """CFOP e NCM vêm das publicações oficiais (scripts/atualizar_tabelas_oficiais.py)."""
+
+    def test_cfop_6107_e_6108_sao_venda_a_nao_contribuinte(self) -> None:
+        # Estavam trocados na tabela escrita à mão (6108 dizia "exportação").
+        producao = buscar_cfop("6107")
+        terceiros = buscar_cfop("6108")
+        assert producao is not None and terceiros is not None
+        assert (
+            producao["descricao"]
+            == "Venda de produção do estabelecimento, destinada a não contribuinte"
+        )
+        assert terceiros["descricao"] == (
+            "Venda de mercadoria adquirida ou recebida de terceiros, destinada a não contribuinte"
+        )
+        assert (terceiros["tipo"], terceiros["aplicacao"]) == ("saida", "interestadual")
+        assert "exporta" not in terceiros["descricao"].lower()
+
+    def test_cfop_traz_nota_vigencia_indicadores_e_fonte(self) -> None:
+        transporte = buscar_cfop("5353")
+        assert transporte is not None
+        assert (
+            transporte["descricao"]
+            == "Prestação de serviço de transporte a estabelecimento comercial"
+        )
+        assert transporte["indicadores"] == ["transporte"]
+        assert transporte["vigencia_fim"] is None
+        assert transporte["nota_explicativa"].startswith("Classificam-se neste código")
+        assert "Portal Nacional da NF-e" in transporte["fonte"]
+
+    def test_tabela_de_cfop_e_a_oficial_inteira(self) -> None:
+        assert len(CFOP_TABLE) >= 600
+        assert all(len(codigo) == 4 and codigo[0] in "123567" for codigo in CFOP_TABLE)
+        assert buscar_cfop("9999") is None
+
+    def test_ncm_que_faltava_na_amostra(self) -> None:
+        dado = buscar_ncm("9506.91.00")
+        assert dado is not None
+        assert (
+            dado["descricao"]
+            == "Artigos e equipamentos para cultura física, ginástica ou atletismo"
+        )
+        assert dado["unidade_tributavel"] == "KG"
+        assert dado["hierarquia"].endswith(dado["descricao"])
+        assert "Siscomex" in dado["fonte"]
+        # Linha nova: sem alíquota de IPI inventada.
+        assert dado["aliquota_ipi"] is None
+
+    def test_ncm_da_amostra_mantem_a_aliquota_de_ipi(self) -> None:
+        cerveja = buscar_ncm("22030000")
+        assert cerveja is not None
+        assert cerveja["aliquota_ipi"] is not None
+
+    def test_descricao_de_ncm_sem_marcacao_html(self) -> None:
+        notebook = buscar_ncm("84713012")
+        assert notebook is not None
+        assert "<" not in notebook["descricao"] and "<" not in notebook["hierarquia"]

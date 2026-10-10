@@ -10,7 +10,12 @@ from datetime import datetime
 from typing import TYPE_CHECKING
 
 from lxml import etree
-from signxml import XMLVerifier  # type: ignore[attr-defined, unused-ignore]
+from signxml import (  # type: ignore[attr-defined, unused-ignore]
+    DigestAlgorithm,
+    SignatureConfiguration,
+    SignatureMethod,
+    XMLVerifier,
+)
 
 from .._core.errors import FiscalValidationError
 from .._core.logging import get_logger
@@ -26,6 +31,18 @@ if TYPE_CHECKING:
 
 # Pattern para extrair CNPJ de 14 digitos numericos do CN do certificado
 _CNPJ_RE = re.compile(r"\d{14}")
+
+
+# Algoritmos aceitos na conferencia. Os manuais da NF-e, do CT-e e do MDF-e
+# exigem RSA-SHA1 com digest SHA-1 (assinatura XMLDSig "enveloped" com C14N):
+# e o que todo documento fiscal autorizado traz. A biblioteca recusa SHA-1 por
+# padrao, o que fazia esta conferencia rejeitar qualquer documento de verdade.
+# SHA-256 fica aceito para quem ja assina assim. HMAC e os demais ficam de
+# fora: assinatura de documento fiscal e sempre RSA com certificado.
+_ALGORITMOS_ACEITOS = SignatureConfiguration(
+    signature_methods=frozenset({SignatureMethod.RSA_SHA1, SignatureMethod.RSA_SHA256}),
+    digest_algorithms=frozenset({DigestAlgorithm.SHA1, DigestAlgorithm.SHA256}),
+)
 
 
 @dataclass(frozen=True)
@@ -225,12 +242,14 @@ def validar_assinatura_nfe(
         if ca_bundle is not None:
             # Validacao completa: verifica assinatura + cadeia de confianca ICP-Brasil.
             # ca_bundle pode ser bytes PEM ou str com caminho para arquivo PEM.
-            verifier.verify(data=xml_bytes, ca_pem_file=ca_bundle)
+            verifier.verify(
+                data=xml_bytes, ca_pem_file=ca_bundle, expect_config=_ALGORITMOS_ACEITOS
+            )
         elif cert_obj is not None:
             # Validacao sem cadeia: verifica integridade (DigestValue) e assinatura
             # criptografica usando o certificado embutido no proprio XML.
             # Nao valida se o certificado e confiavel (sem CA bundle).
-            verifier.verify(data=xml_bytes, x509_cert=cert_obj)
+            verifier.verify(data=xml_bytes, x509_cert=cert_obj, expect_config=_ALGORITMOS_ACEITOS)
         else:
             # Sem certificado embutido e sem ca_bundle: impossivel validar a
             # confianca do assinante. Retorna invalido para evitar falsa validacao

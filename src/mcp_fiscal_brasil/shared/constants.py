@@ -117,10 +117,12 @@ MODELOS_DOCUMENTO: dict[str, str] = {
 }
 
 # CFOPs mais comuns (amostra)
+# Lista curta, so para rotulo. A tabela oficial inteira, com nota explicativa e
+# vigencia, esta em tabelas/data/cfop_oficial.json (consultar_cfop).
 CFOP_DESCRICAO: dict[str, str] = {
     "1101": "Compra para industrializacao dentro do estado",
     "1102": "Compra para comercializacao dentro do estado",
-    "1202": "Devolucao de venda de producao própria dentro do estado",
+    "1202": "Devolucao de venda de mercadoria adquirida ou recebida de terceiros",
     "1556": "Compra de material para uso ou consumo dentro do estado",
     "2101": "Compra para industrializacao de outro estado",
     "2102": "Compra para comercializacao de outro estado",
@@ -128,19 +130,19 @@ CFOP_DESCRICAO: dict[str, str] = {
     "3102": "Compra para comercializacao do exterior",
     "5101": "Venda de producao do estabelecimento dentro do estado",
     "5102": "Venda de mercadoria adquirida ou recebida de terceiros dentro do estado",
-    "5103": "Venda de producao do estabelecimento em operacao com produto diferente",
-    "5110": "Venda de producao do estabelecimento, destinada a exportacao",
+    "5103": "Venda de producao do estabelecimento, efetuada fora do estabelecimento",
+    "5110": "Venda de mercadoria adquirida ou recebida de terceiros, destinada a ZFM ou ALC",
     "5202": "Devolucao de compra para comercializacao dentro do estado",
     "5401": "Venda de producao do estabelecimento em operacao com ST",
     "5403": "Venda de mercadoria adquirida com ST dentro do estado",
     "5405": "Venda de mercadoria adquirida com ST para não contribuinte",
-    "5501": "Remessa para industrializacao por encomenda",
-    "5556": "Venda de material de uso ou consumo dentro do estado",
+    "5501": "Remessa de producao do estabelecimento, com fim especifico de exportacao",
+    "5556": "Devolucao de compra de material para uso ou consumo",
     "5910": "Remessa em bonificacao, doacao ou brinde",
     "5911": "Remessa de amostra gratis",
     "6101": "Venda de producao do estabelecimento para outro estado",
     "6102": "Venda de mercadoria adquirida ou recebida de terceiros para outro estado",
-    "6108": "Venda de producao do estabelecimento destinada ao exterior",
+    "6108": "Venda de mercadoria adquirida ou recebida de terceiros, destinada a nao contribuinte",
     "6401": "Venda de producao com ST para outro estado",
     "7101": "Exportacao de producao própria",
     "7102": "Exportacao de mercadoria adquirida de terceiros",

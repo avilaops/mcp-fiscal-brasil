@@ -413,3 +413,60 @@ class TestValidarAssinaturaNfe:
         ca_bundle_gigante = b"A" * (1024 * 1024 + 1)
         with pytest.raises(FiscalValidationError, match="1 MB"):
             validar_assinatura_nfe(b"<NFe/>", ca_bundle=ca_bundle_gigante)
+
+
+class _AssinadorDoManual(XMLSigner):
+    """Assina como os manuais da NF-e, do CT-e e do MDF-e mandam: RSA-SHA1.
+
+    A biblioteca recusa SHA-1 na hora de assinar; so o teste precisa produzir
+    um documento assim, entao a recusa e desligada aqui e em mais nenhum lugar.
+    """
+
+    def check_deprecated_methods(self) -> None:
+        return None
+
+
+def _assinar_como_o_manual(xml_str: str, key: rsa.RSAPrivateKey, cert: x509.Certificate) -> bytes:
+    from signxml import CanonicalizationMethod, DigestAlgorithm, SignatureMethod
+
+    root = etree.fromstring(xml_str.encode())
+    assinador = _AssinadorDoManual(
+        signature_algorithm=SignatureMethod.RSA_SHA1,
+        digest_algorithm=DigestAlgorithm.SHA1,
+        c14n_algorithm=CanonicalizationMethod.CANONICAL_XML_1_0,
+    )
+    assinado = assinador.sign(root, key=key, cert=[cert], reference_uri=f"#{_NFE_ID}")
+    return etree.tostring(assinado)
+
+
+class TestAssinaturaRsaSha1DoManual:
+    """O algoritmo que todo documento fiscal autorizado traz tem de ser aceito."""
+
+    def test_assinatura_rsa_sha1_valida(
+        self, chave_privada: rsa.RSAPrivateKey, certificado_autoassinado: x509.Certificate
+    ) -> None:
+        xml = _assinar_como_o_manual(_xml_nfe_minimo(), chave_privada, certificado_autoassinado)
+        assert b"rsa-sha1" in xml
+        assert b"xmldsig#sha1" in xml
+        resultado = validar_assinatura_nfe(xml)
+        assert resultado.assinatura_valida is True, resultado.motivo
+
+    def test_rsa_sha1_adulterado_continua_invalido(
+        self, chave_privada: rsa.RSAPrivateKey, certificado_autoassinado: x509.Certificate
+    ) -> None:
+        xml = _assinar_como_o_manual(_xml_nfe_minimo(), chave_privada, certificado_autoassinado)
+        adulterado = xml.replace(b"<nNF>1</nNF>", b"<nNF>2</nNF>")
+        assert adulterado != xml
+        assert validar_assinatura_nfe(adulterado).assinatura_valida is False
+
+    def test_algoritmo_fora_do_manual_e_recusado(
+        self, chave_privada: rsa.RSAPrivateKey, certificado_autoassinado: x509.Certificate
+    ) -> None:
+        from signxml import SignatureMethod
+
+        root = etree.fromstring(_xml_nfe_minimo().encode())
+        assinado = XMLSigner(signature_algorithm=SignatureMethod.RSA_SHA512).sign(
+            root, key=chave_privada, cert=[certificado_autoassinado], reference_uri=f"#{_NFE_ID}"
+        )
+        resultado = validar_assinatura_nfe(etree.tostring(assinado))
+        assert resultado.assinatura_valida is False
