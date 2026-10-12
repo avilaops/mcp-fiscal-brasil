@@ -142,14 +142,40 @@ def _xml_para_o_dacte(xml: str) -> tuple[str, bool]:
     emitente vai. Para ela aparecer, a copia entregue ao desenho ganha um
     `ObsCont` com o mesmo texto. O XML do documento nao e tocado: esta copia
     serve so de entrada para o PDF.
+
+    O mesmo vale para os documentos anteriores (`infCTeNorm/docAnt`) do
+    redespacho e da subcontratacao: a biblioteca so lista as chaves de
+    `infDoc`, sempre com o rotulo "NFE". Cada CT-e anterior entra no quadro
+    OBSERVACOES, com a chave e quem o emitiu.
     """
     raiz = parse_xml(xml.encode("utf-8"))
     ns = {"d": NS_CTE}
+    inf = raiz.find(".//d:infCte", ns)
     compl = raiz.find(".//d:infCte/d:compl", ns)
     observacao = compl.findtext("d:xObs", namespaces=ns) if compl is not None else None
-    if compl is not None and observacao and observacao.strip():
-        extra = etree.SubElement(compl, f"{{{NS_CTE}}}ObsCont", xCampo="OBSERVACAO")
-        etree.SubElement(extra, f"{{{NS_CTE}}}xTexto").text = observacao.strip()
+    linhas = [observacao.strip()] if observacao and observacao.strip() else []
+    for emitente in raiz.findall(".//d:infCte/d:infCTeNorm/d:docAnt/d:emiDocAnt", ns):
+        nome = (emitente.findtext("d:xNome", namespaces=ns) or "").strip()
+        documento = (
+            emitente.findtext("d:CNPJ", namespaces=ns)
+            or emitente.findtext("d:CPF", namespaces=ns)
+            or ""
+        ).strip()
+        quem = " - ".join(parte for parte in (nome, documento) if parte)
+        for chave in emitente.findall(".//d:idDocAntEle/d:chCTe", ns):
+            linhas.append(
+                f"DOCUMENTO ANTERIOR: CT-e {(chave.text or '').strip()}"
+                + (f" ({quem})" if quem else "")
+            )
+    if linhas and inf is not None:
+        if compl is None:
+            # `compl` vem logo depois de `ide` no esquema.
+            compl = etree.Element(f"{{{NS_CTE}}}compl")
+            ide = inf.find("d:ide", ns)
+            inf.insert(list(inf).index(ide) + 1 if ide is not None else 0, compl)
+        for linha in linhas:
+            extra = etree.SubElement(compl, f"{{{NS_CTE}}}ObsCont", xCampo="OBSERVACAO")
+            etree.SubElement(extra, f"{{{NS_CTE}}}xTexto").text = linha
     tem_ibs_cbs = raiz.find(".//d:infCte/d:imp/d:IBSCBS", ns) is not None
     return etree.tostring(raiz, encoding="unicode"), tem_ibs_cbs
 

@@ -407,6 +407,28 @@ class TestDocumentosAuxiliares:
         sem_nada = self._textos_do_pdf(base64.b64decode(gerar_dacte(amostras.cte()).pdf_base64))
         assert "IBS E CBS" not in sem_nada
 
+    def test_dacte_mostra_o_documento_anterior_do_redespacho(self) -> None:
+        # A biblioteca so lista as chaves de infDoc: o CT-e anterior do redespacho sumia do DACTE.
+        anterior = amostras.chave("57", 321)
+        xml = (
+            amostras.cte(com_protocolo=True)
+            .replace("<tpServ>0</tpServ>", "<tpServ>2</tpServ>")
+            .replace(
+                f"<infDoc><infNFe><chave>{amostras.CHAVE_NFE}</chave></infNFe></infDoc>",
+                "<docAnt><emiDocAnt><CNPJ>44555666000181</CNPJ><IE>123456789012</IE><UF>SP</UF>"
+                "<xNome>Transportadora Contratante Ltda</xNome>"
+                f"<idDocAnt><idDocAntEle><chCTe>{anterior}</chCTe></idDocAntEle></idDocAnt></emiDocAnt></docAnt>",
+            )
+        )
+        assert validar_xml_fiscal(xml)["valido"] is True
+        texto = self._textos_do_pdf(base64.b64decode(gerar_dacte(xml).pdf_base64))
+        assert "REDESPACHO" in texto
+        assert f"DOCUMENTO ANTERIOR: CT-e {anterior}" in texto
+        assert "Transportadora Contratante Ltda" in texto
+
+        sem = self._textos_do_pdf(base64.b64decode(gerar_dacte(amostras.cte()).pdf_base64))
+        assert "DOCUMENTO ANTERIOR" not in sem
+
     def test_damdfe_de_contingencia_em_producao_nao_leva_sem_valor_fiscal(self) -> None:
         # Em contingencia o MDF-e circula sem protocolo: o DAMDFE e o documento da carga.
         # A marca e um trecho so com a frase; o nome do emitente de teste tambem a contem.
