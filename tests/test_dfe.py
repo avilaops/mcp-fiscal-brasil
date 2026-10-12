@@ -407,6 +407,26 @@ class TestDocumentosAuxiliares:
         sem_nada = self._textos_do_pdf(base64.b64decode(gerar_dacte(amostras.cte()).pdf_base64))
         assert "IBS E CBS" not in sem_nada
 
+    def test_damdfe_de_contingencia_em_producao_nao_leva_sem_valor_fiscal(self) -> None:
+        # Em contingencia o MDF-e circula sem protocolo: o DAMDFE e o documento da carga.
+        # A marca e um trecho so com a frase; o nome do emitente de teste tambem a contem.
+        def carimbado(xml: str) -> bool:
+            texto = self._textos_do_pdf(base64.b64decode(gerar_damdfe(xml).pdf_base64))
+            return "SEM VALOR FISCAL" in texto.split(" | ")
+
+        contingencia = gerar_damdfe(amostras.mdfe(tp_amb="1", tp_emis="2"))
+        assert (contingencia.autorizado, contingencia.contingencia) == (False, True)
+        assert "CONTING" in self._textos_do_pdf(base64.b64decode(contingencia.pdf_base64))
+        assert carimbado(amostras.mdfe(tp_amb="1", tp_emis="2")) is False
+
+        # Os outros casos sem protocolo continuam carimbados.
+        assert carimbado(amostras.mdfe(tp_amb="1", tp_emis="1")) is True
+        assert carimbado(amostras.mdfe(tp_amb="2", tp_emis="2")) is True
+        assert carimbado(amostras.mdfe()) is True
+        # Autorizado em producao: sem carimbo.
+        assert carimbado(amostras.mdfe(tp_amb="1", com_protocolo=True)) is False
+        assert gerar_damdfe(amostras.mdfe(tp_amb="1", com_protocolo=True)).contingencia is False
+
     def test_sem_protocolo_gera_e_avisa_que_nao_esta_autorizado(self) -> None:
         assert gerar_dacte(amostras.cte()).autorizado is False
         assert gerar_damdfe(amostras.mdfe()).autorizado is False

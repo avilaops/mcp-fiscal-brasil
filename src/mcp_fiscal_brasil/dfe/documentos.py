@@ -53,7 +53,11 @@ class DocumentoAuxiliar(BaseModel):
     serie: str | None = None
 
     autorizado: bool
-    """Ha protocolo de autorizacao no XML (cStat 100)? Sem ele o PDF nao vale como documento."""
+    """Ha protocolo de autorizacao no XML (cStat 100)?"""
+
+    contingencia: bool = False
+    """Emitido em contingencia (tpEmis diferente de 1)? No MDF-e de producao em
+    contingencia o documento auxiliar vale sem protocolo, ate a transmissao."""
 
 
 def _gerar(
@@ -126,6 +130,7 @@ def _gerar(
         numero=inf.findtext(f"d:ide/d:{campo_numero}", namespaces=ns),
         serie=inf.findtext("d:ide/d:serie", namespaces=ns),
         autorizado=situacao == "100",
+        contingencia=(inf.findtext("d:ide/d:tpEmis", namespaces=ns) or "1") != "1",
     )
 
 
@@ -160,7 +165,25 @@ def _desenhar_dacte(xml: str) -> bytes:
 def _desenhar_damdfe(xml: str) -> bytes:
     from brazilfiscalreport.damdfe import Damdfe
 
-    return bytes(Damdfe(xml=xml).output())
+    class DamdfeDaCasa(Damdfe):  # type: ignore[misc]
+        """Corrige a marca "SEM VALOR FISCAL" da biblioteca na contingencia.
+
+        A biblioteca carimba todo MDF-e sem protocolo. Mas o MDF-e emitido em
+        contingencia (tpEmis 2) em producao circula justamente sem protocolo:
+        o DAMDFE de contingencia e o documento que acompanha a carga ate a
+        transmissao (MOC do MDF-e, emissao em contingencia). Nesse caso fica
+        so a marca "CONTINGENCIA", que a biblioteca ja desenha. Homologacao e
+        emissao normal sem protocolo continuam carimbadas.
+        """
+
+        def _draw_void_watermark(self) -> None:
+            de_producao = self.ide.findtext(f"{{{NS_MDFE}}}tpAmb") == "1"
+            em_contingencia = self.ide.findtext(f"{{{NS_MDFE}}}tpEmis") == "2"
+            if de_producao and em_contingencia:
+                return
+            super()._draw_void_watermark()
+
+    return bytes(DamdfeDaCasa(xml=xml).output())
 
 
 def gerar_dacte(xml_content: str | bytes) -> DocumentoAuxiliar:

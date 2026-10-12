@@ -12,8 +12,14 @@ from mcp_fiscal_brasil.dfe.chave import calcular_dv
 CNPJ_EMITENTE = "11222333000181"
 
 
-def chave(modelo: str, numero: int, codigo: str = "00000123", cnpj: str = CNPJ_EMITENTE) -> str:
-    base = f"352610{cnpj}{modelo}001{numero:09d}1{codigo}"
+def chave(
+    modelo: str,
+    numero: int,
+    codigo: str = "00000123",
+    cnpj: str = CNPJ_EMITENTE,
+    tp_emis: str = "1",
+) -> str:
+    base = f"352610{cnpj}{modelo}001{numero:09d}{tp_emis}{codigo}"
     return base + calcular_dv(base)
 
 
@@ -78,8 +84,15 @@ def cte(numero: int = 45, *, modal: str | None = None, com_protocolo: bool = Fal
     )
 
 
-def mdfe(numero: int = 7, *, modal: str | None = None, com_protocolo: bool = False) -> str:
-    ch = chave("58", numero)
+def mdfe(
+    numero: int = 7,
+    *,
+    modal: str | None = None,
+    com_protocolo: bool = False,
+    tp_amb: str = "2",
+    tp_emis: str = "1",
+) -> str:
+    ch = chave("58", numero, tp_emis=tp_emis)
     rodo = (
         modal
         if modal is not None
@@ -91,8 +104,8 @@ def mdfe(numero: int = 7, *, modal: str | None = None, com_protocolo: bool = Fal
         )
     )
     doc = f"""<MDFe xmlns="http://www.portalfiscal.inf.br/mdfe"><infMDFe versao="3.00" Id="MDFe{ch}">
-<ide><cUF>35</cUF><tpAmb>2</tpAmb><tpEmit>1</tpEmit><mod>58</mod><serie>1</serie><nMDF>{numero}</nMDF><cMDF>00000123</cMDF>
-<cDV>{ch[-1]}</cDV><modal>1</modal><dhEmi>2026-10-10T09:30:00-03:00</dhEmi><tpEmis>1</tpEmis><procEmi>0</procEmi>
+<ide><cUF>35</cUF><tpAmb>{tp_amb}</tpAmb><tpEmit>1</tpEmit><mod>58</mod><serie>1</serie><nMDF>{numero}</nMDF><cMDF>00000123</cMDF>
+<cDV>{ch[-1]}</cDV><modal>1</modal><dhEmi>2026-10-10T09:30:00-03:00</dhEmi><tpEmis>{tp_emis}</tpEmis><procEmi>0</procEmi>
 <verProc>teste-1.0</verProc><UFIni>SP</UFIni><UFFim>SP</UFFim>
 <infMunCarrega><cMunCarrega>3549805</cMunCarrega><xMunCarrega>Sao Jose do Rio Preto</xMunCarrega></infMunCarrega></ide>
 <emit><CNPJ>{CNPJ_EMITENTE}</CNPJ><IE>123456789012</IE><xNome>MDF-E EMITIDO EM AMBIENTE DE HOMOLOGACAO - SEM VALOR FISCAL</xNome>
