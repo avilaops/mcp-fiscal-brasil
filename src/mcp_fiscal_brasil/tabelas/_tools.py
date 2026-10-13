@@ -31,8 +31,9 @@ def register(app: FastMCP) -> None:
             "cálculo de IPI e preenchimento do SPED. "
             "Quando usar: ao emitir nota fiscal, fazer importação/exportação ou calcular tributos. "
             "Comportamento offline: lê do banco SQLite bundled; não requer conexão. "
-            "A base traz a nomenclatura NCM vigente inteira (Siscomex); a aliquota de IPI so "
-            "existe para uma amostra de codigos e vem vazia nos demais. "
+            "A base traz a nomenclatura NCM vigente inteira (Siscomex) e a aliquota de IPI da "
+            "TIPI inteira (Receita Federal), com NT e excecoes (EX); codigo que a TIPI nao "
+            "traz vem sem aliquota. "
             "Formato do parâmetro: 8 dígitos numéricos, com ou sem pontuação "
             "(ex: '84713019' ou '8471.30.19')."
         ),
@@ -155,11 +156,13 @@ def register(app: FastMCP) -> None:
         description=(
             "Consulta o Código Especificador da Substituição Tributária (CEST). "
             "Purpose: identificar produtos sujeitos à substituição tributária do ICMS, "
-            "conforme Convênio ICMS 92/2015 e suas atualizações. "
+            "conforme os anexos II a XXVI do Convênio ICMS 142/18 (texto consolidado do "
+            "CONFAZ, redação vigente; a resposta diz a data no campo fonte). "
             "Quando usar: ao emitir NF-e com produtos sujeitos ao ICMS-ST. "
             "Comportamento offline: lê do banco SQLite bundled. "
-            "AVISO: o banco pode conter apenas uma amostra; execute scripts/build_tabelas_db.py "
-            "para popular a tabela completa. "
+            "Item revogado ou que ainda não entrou em vigor não é encontrado. "
+            "O convênio lista o que pode ter ST; se há ST numa operação, quem diz é a "
+            "legislação de cada UF. "
             "Formato do parâmetro: 7 dígitos numéricos, com ou sem pontuação "
             "(ex: '0100700' ou '01.007.00')."
         ),
@@ -167,7 +170,7 @@ def register(app: FastMCP) -> None:
     async def tool_consultar_cest(cest: str) -> dict[str, Any]:
         """Consulta os dados de um Codigo Especificador da Substituicao Tributaria (CEST).
 
-        Retorna a descricao do segmento/produto e a lista de NCMs relacionados.
+        Retorna a descricao do item, o segmento, o anexo e a coluna NCM/SH do convenio.
         Operacao offline a partir do banco SQLite bundled.
 
         Args:
@@ -175,7 +178,8 @@ def register(app: FastMCP) -> None:
                   (ex.: "0100700" ou "01.007.00").
 
         Returns:
-            dict com cest, descricao, segmento e ncm_relacionados.
+            dict com cest, descricao, segmento, segmento_nome, anexo, anexo_titulo, item,
+            ncm_sh, ncm_relacionados e fonte.
         """
         resultado = await consultar_cest(cest)
         return resultado.model_dump(mode="json", exclude_none=True)

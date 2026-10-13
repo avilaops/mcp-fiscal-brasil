@@ -16,6 +16,16 @@ portadas seletivamente para o repositório canônico.
 
 ### Novas funcionalidades
 
+* `consultar_cest` responde pela tabela oficial inteira: os 1.040 itens dos anexos
+  II a XXVI do Convênio ICMS 142/18 na redação vigente em 13/10/2026 (texto
+  consolidado do CONFAZ, alterado até o Conv. ICMS 107/26), com a coluna NCM/SH,
+  o anexo, o item, o nome do segmento e a fonte. A amostra antiga de 51 códigos,
+  escrita à mão e com descrições que não eram as do convênio (02.001.00 como
+  "Cerveja e chope"), saiu, junto com o `scripts/build_tabelas_db.py` que a
+  gerava. Item revogado não é encontrado. `scripts/atualizar_tabelas_oficiais.py
+  --cest CV142_18.html` refaz a carga; o Conv. ICMS 107/26 muda os itens 46.0 e
+  47.0 e acrescenta 46.1, 47.1 e 51.1 ao anexo XX em 01/11/2026, e a carga
+  precisa ser refeita a partir dessa data.
 * `consultar_ncm` e `consultar_aliquotas_importacao` trazem a alíquota de IPI da
   TIPI oficial inteira (Decreto nº 11.158/2022, atualizada até o ADE RFB nº 1 de
   30/01/2026): 10.515 códigos, a marca de NT (não tributado) e as 582 exceções

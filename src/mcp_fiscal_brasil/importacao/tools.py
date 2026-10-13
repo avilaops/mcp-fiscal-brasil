@@ -179,8 +179,8 @@ async def consultar_aliquotas_importacao(ncm: str) -> AliquotasImportacaoRespons
 
     if dado_ncm is None:
         avisos.append(
-            f"NCM '{codigo}' não encontrado no banco TIPI bundled. "
-            "Execute scripts/build_tabelas_db.py para popular a tabela completa. "
+            f"NCM '{codigo}' não consta da nomenclatura NCM vigente carregada "
+            "(código inexistente ou extinto). "
             "A alíquota IPI não pôde ser determinada offline."
         )
     else:
@@ -329,9 +329,8 @@ async def calcular_tributos_importacao(
     dado_ncm = await asyncio.to_thread(_buscar_dados_ncm_sync, codigo)
     if dado_ncm is None:
         raise FiscalValidationError(
-            f"NCM '{codigo}' não encontrado no banco TIPI bundled. "
-            "Execute scripts/build_tabelas_db.py para popular a tabela completa, "
-            "ou verifique se o NCM está correto.",
+            f"NCM '{codigo}' não consta da nomenclatura NCM vigente carregada: "
+            "verifique se o NCM está correto ou se foi extinto.",
             field="ncm",
             value=ncm,
         )

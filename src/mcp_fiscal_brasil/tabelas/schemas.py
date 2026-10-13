@@ -87,11 +87,27 @@ class CESTResponse(BaseResponse):
     """Resposta de consulta de CEST (Código Especificador da Substituição Tributária)."""
 
     cest: str = Field(description="Código CEST com 7 dígitos")
-    descricao: str = Field(description="Descrição do segmento/produto")
+    descricao: str = Field(description="Descrição do item no convênio")
     segmento: str = Field(description="Número do segmento CEST (primeiros 2 dígitos)")
+    segmento_nome: str | None = Field(
+        default=None, description="Nome do segmento (anexo I do Convênio ICMS 142/18)"
+    )
+    anexo: str | None = Field(default=None, description="Anexo do convênio que traz o item")
+    anexo_titulo: str | None = Field(default=None, description="Título do anexo")
+    item: str | None = Field(default=None, description="Número do item dentro do anexo")
+    ncm_sh: str | None = Field(
+        default=None, description="Coluna NCM/SH do item, como o convênio a escreve"
+    )
     ncm_relacionados: list[str] = Field(
         default_factory=list,
-        description="Lista de códigos NCM relacionados a este CEST",
+        description=(
+            "Códigos da coluna NCM/SH só com dígitos, do tamanho que o convênio traz: "
+            "capítulo (2), posição (4), subposição ou código inteiro (8). O NCM do produto "
+            "se enquadra quando começa por um deles e o produto atende à descrição"
+        ),
+    )
+    fonte: str | None = Field(
+        default=None, description="Texto do convênio usado, a data da redação e de onde veio"
     )
 
 

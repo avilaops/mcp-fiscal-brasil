@@ -5,10 +5,10 @@ Estratégia de armazenamento:
   - CFOP, CST/CSOSN, alíquotas ICMS: dicionários em memória (pequenos e estáveis).
   - NCM e CEST: SQLite bundled em data/tabelas_fiscais.db (tabelas grandes).
 
-AVISO NCM/CEST: O banco SQLite distribuído contém um subconjunto representativo dos
-capítulos NCM mais comuns (~250 registros de exemplo) e segmentos CEST (~100 registros).
-A tabela NCM completa da TIPI possui ~10.515 registros. Para popular o banco completo,
-execute: python scripts/build_tabelas_db.py --tipi tipi.csv --cest cest.csv
+O banco traz as tabelas oficiais inteiras: a NCM do Siscomex, a alíquota de IPI da
+TIPI e o CEST do Convênio ICMS 142/18 (anexos II a XXVI, redação vigente). A fonte e
+a data de cada uma ficam na tabela `fontes`. Para atualizar, baixe as publicações e
+rode scripts/atualizar_tabelas_oficiais.py (as fontes estão no cabeçalho dele).
 """
 
 from __future__ import annotations
@@ -366,7 +366,7 @@ def _get_conn() -> sqlite3.Connection | None:
         logger.warning(
             "tabelas_db_not_found",
             path=str(db_path),
-            hint="Execute: python scripts/build_tabelas_db.py para gerar o banco.",
+            hint="O banco vem no pacote (tabelas/data); scripts/atualizar_tabelas_oficiais.py o atualiza.",
         )
         return None
 
@@ -610,16 +610,31 @@ def buscar_cest(codigo: str) -> dict[str, Any] | None:
         return None
     codigo_limpo = codigo.replace(".", "").strip()
     row = conn.execute(
-        "SELECT cest, descricao, segmento FROM cest WHERE cest = ?",
+        "SELECT cest, descricao, segmento, segmento_nome, anexo, anexo_titulo, item, ncm_sh "
+        "FROM cest WHERE cest = ?",
         (codigo_limpo,),
     ).fetchone()
     if row is None:
         return None
+    # Os códigos da coluna NCM/SH, só com dígitos e do tamanho que o convênio escreveu:
+    # capítulo (2), posição (4), subposição ou o código inteiro (8).
     ncm_rows = conn.execute(
-        "SELECT ncm FROM cest_ncm WHERE cest = ?",
+        "SELECT ncm FROM cest_ncm WHERE cest = ? ORDER BY ordem",
         (codigo_limpo,),
     ).fetchall()
     ncm_relacionados = [r["ncm"] for r in ncm_rows]
     resultado = dict(row)
     resultado["ncm_relacionados"] = ncm_relacionados
+    resultado["fonte"] = fonte_da_tabela("cest")
     return resultado
+
+
+def fonte_da_tabela(tabela: str) -> str | None:
+    """De onde veio e de quando é uma tabela do banco ('ncm', 'tipi', 'cest')."""
+    conn = _get_conn()
+    if conn is None:
+        return None
+    linha = conn.execute(
+        "SELECT fonte, referencia FROM fontes WHERE tabela = ?", (tabela,)
+    ).fetchone()
+    return f"{linha['fonte']} ({linha['referencia']})" if linha else None

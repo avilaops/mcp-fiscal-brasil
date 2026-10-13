@@ -1,8 +1,15 @@
 """Testes offline para o módulo tabelas fiscais estáticas."""
 
+import importlib.util
+import sys
+from datetime import date
+from pathlib import Path
+from typing import Any, ClassVar
+
 import pytest
 
 from mcp_fiscal_brasil._core import FiscalValidationError
+from mcp_fiscal_brasil.tabelas import loader
 from mcp_fiscal_brasil.tabelas.loader import (
     CFOP_TABLE,
     CSOSN_TABLE,
@@ -253,15 +260,115 @@ class TestCESTLoader:
         dado = buscar_cest("9999999")
         assert dado is None
 
-    def test_cest_cerveja_com_ncm(self) -> None:
+    def test_cest_traz_o_item_do_convenio(self) -> None:
+        # Anexo III do Convênio ICMS 142/18, item 1.0. A amostra antiga dizia "Cerveja e chope".
         dado = buscar_cest("0200100")
         assert dado is not None
-        assert "22030000" in dado["ncm_relacionados"]
+        assert dado["descricao"] == "Aperitivos, amargos, bitter e similares"
+        assert dado["ncm_sh"] == "2205 2208.90.00"
+        assert dado["ncm_relacionados"] == ["2205", "22089000"]
+        assert (dado["anexo"], dado["item"]) == ("III", "1.0")
+        assert dado["segmento_nome"] == "Bebidas alcoólicas, exceto cerveja e chope"
+        assert "Convênio ICMS 142/18" in dado["fonte"]
 
     def test_cest_com_pontuacao_normalizada(self) -> None:
         dado = buscar_cest("02.001.00")
         assert dado is not None
         assert dado["cest"] == "0200100"
+
+    def test_cest_revogado_fica_fora(self) -> None:
+        # Item 1.0 do anexo IV, revogado pelo Conv. ICMS 150/20.
+        assert buscar_cest("0300100") is None
+
+    def test_cest_de_capitulos_inteiros(self) -> None:
+        # No anexo XXVI a coluna NCM/SH traz capítulos ("Capítulos 13 e 15 a 23").
+        dado = buscar_cest("2806200")
+        assert dado is not None
+        assert dado["ncm_sh"] == "Capítulos 13 e 15 a 23"
+        assert dado["ncm_relacionados"] == ["13", *[str(n) for n in range(15, 24)]]
+
+    def test_cest_e_a_tabela_inteira(self) -> None:
+        conn = loader._get_conn()
+        assert conn is not None
+        total, anexos = conn.execute("SELECT COUNT(*), COUNT(DISTINCT anexo) FROM cest").fetchone()
+        assert total > 1000
+        assert anexos == 25  # do II ao XXVI
+
+
+@pytest.fixture(scope="module")
+def script() -> Any:
+    """O script de atualização das tabelas, que fica fora do pacote."""
+    caminho = Path(__file__).parent.parent / "scripts" / "atualizar_tabelas_oficiais.py"
+    spec = importlib.util.spec_from_file_location("atualizar_tabelas_oficiais", caminho)
+    assert spec is not None and spec.loader is not None
+    modulo = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = modulo
+    spec.loader.exec_module(modulo)
+    return modulo
+
+
+class TestLeitorDoConvenioDoCEST:
+    """O leitor do script de atualização: o que vale, o que é redação anterior e o que é futuro."""
+
+    # Linhas do anexo XX como o CONFAZ as publica: (células, em verde).
+    LINHAS: ClassVar[list[tuple[list[str], bool]]] = [
+        (["45.0", "21.045.00", "8516.50.00", "Fornos de micro-ondas"], False),
+        (["Nova redação dada ao item 46.0 do Anexo XX pelo Convênio ICMS 107/26, efeitos a partir de 01.11.26."], False),
+        (["46.0", "21.046.00", "8516.60.00", "Outros fornos; redação nova"], False),
+        (["Redação original, efeitos até 31.10.26."], False),
+        (["46.0", "21.046.00", "8516.60.00", "Outros fornos; redação original"], True),
+        (["Acrescido o item 46.1 do Anexo XX pelo Convênio ICMS 107/26, efeitos a partir de 01.11.26."], False),
+        (["46.1", "21.046.01", "8516.60.00", "Fogões de cozinha, exceto os portáteis"], False),
+        (["48.0", "21.048.00", "8516.71.00", "Cafeteiras"], False),
+        (["Revogado o item 49.0 do Anexo XX pelo Conv. ICMS 38/19, efeitos a partir de 01.07.19."], False),
+        (["49.0", "REVOGADO"], False),
+        (["Redação original, efeitos até 30.06.19."], False),
+        (["49.0", "21.049.00", "8516.72.00", "Torradeiras"], True),
+    ]  # fmt: skip
+
+    def _descricoes(self, script: Any, vigencia: date) -> dict[str, str]:
+        lidos = script._itens_do_anexo("XX", self.LINHAS, vigencia, [])
+        saida = {}
+        for numero, lido in lidos.items():
+            celulas = lido.anterior if lido.inicio and lido.anterior else lido.celulas
+            saida[numero] = "FUTURO" if lido.inicio and not lido.anterior else celulas[-1]
+        return saida
+
+    def test_antes_da_vigencia_vale_a_redacao_anterior(self, script: Any) -> None:
+        assert self._descricoes(script, date(2026, 10, 13)) == {
+            "45.0": "Fornos de micro-ondas",
+            "46.0": "Outros fornos; redação original",
+            "46.1": "FUTURO",
+            "48.0": "Cafeteiras",
+            "49.0": "REVOGADO",
+        }
+
+    def test_na_vigencia_vale_a_redacao_nova(self, script: Any) -> None:
+        descricoes = self._descricoes(script, date(2026, 11, 1))
+        assert descricoes["46.0"] == "Outros fornos; redação nova"
+        assert descricoes["46.1"] == "Fogões de cozinha, exceto os portáteis"
+
+    def test_redacao_anterior_sem_a_cor_gera_aviso(self, script: Any) -> None:
+        linhas = [
+            (["24.0", "17.024.00", "0406", "Queijos, redação nova"], False),
+            (["Redação original, efeitos até 31.08.22."], False),
+            (["24.0", "17.024.00", "0406", "Queijos, redação original"], False),
+        ]
+        avisos: list[str] = []
+        lidos = script._itens_do_anexo("XVII", linhas, date(2026, 10, 13), avisos)
+        assert lidos["24.0"].celulas[-1] == "Queijos, redação nova"
+        assert len(avisos) == 1
+
+    def test_linha_em_verde_sem_remissao_fica_em_duvida(self, script: Any) -> None:
+        linhas = [(["1.0", "22.001.00", "2309", "Ração"], True)]
+        lidos = script._itens_do_anexo("XXI", linhas, date(2026, 10, 13), [])
+        assert lidos["1.0"].duvida
+
+    def test_coluna_ncm_sh(self, script: Any) -> None:
+        assert script._prefixos_ncm("3815.12.10 3815.12.90") == (["38151210", "38151290"], [])
+        assert script._prefixos_ncm("8704.31.30,") == (["87043130"], [])
+        assert script._prefixos_ncm("3924.90.00 926.90.90") == (["39249000"], ["926.90.90"])
+        assert script._prefixos_ncm("Capítulos 33 e 34") == (["33", "34"], [])
 
 
 # ---------------------------------------------------------------------------
@@ -420,6 +527,19 @@ class TestConsultarCEST:
         resp = await consultar_cest("0200100")
         assert resp.cest == "0200100"
         assert resp.segmento == "02"
+        assert resp.descricao == "Aperitivos, amargos, bitter e similares"
+        assert resp.anexo == "III"
+        assert resp.fonte is not None and "142/18" in resp.fonte
+
+    async def test_cest_energia_eletrica(self) -> None:
+        # A amostra antiga dizia "Notebook e laptop" para este código.
+        resp = await consultar_cest("07.001.00")
+        assert resp.descricao == "Energia elétrica"
+        assert resp.ncm_relacionados == ["27160000"]
+
+    async def test_cest_revogado_diz_que_nao_consta(self) -> None:
+        with pytest.raises(FiscalValidationError, match="revogado"):
+            await consultar_cest("03.001.00")
 
     async def test_cest_com_pontuacao_aceito(self) -> None:
         resp = await consultar_cest("02.001.00")

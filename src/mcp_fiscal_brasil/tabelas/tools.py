@@ -10,6 +10,7 @@ from .loader import (
     buscar_cest,
     buscar_cfop,
     buscar_ncm,
+    fonte_da_tabela,
     validar_cst,
 )
 from .schemas import (
@@ -175,11 +176,12 @@ async def consultar_cest(cest: str) -> CESTResponse:
               (ex: '01.007.00' ou '0100700').
 
     Returns:
-        CESTResponse com código, descrição, segmento e NCMs relacionados.
+        CESTResponse com código, descrição, segmento, anexo e item do convênio,
+        a coluna NCM/SH e a fonte.
 
     Raises:
         FiscalValidationError: Se o formato do CEST for inválido.
-        FiscalValidationError: Se o CEST não for encontrado na tabela.
+        FiscalValidationError: Se o CEST não constar da redação vigente do convênio.
     """
     codigo_limpo = cest.replace(".", "").strip()
     if not codigo_limpo.isdigit() or len(codigo_limpo) != 7:
@@ -194,10 +196,11 @@ async def consultar_cest(cest: str) -> CESTResponse:
     dado = await asyncio.to_thread(buscar_cest, codigo_limpo)
 
     if dado is None:
+        fonte = await asyncio.to_thread(fonte_da_tabela, "cest")
         raise FiscalValidationError(
-            f"CEST '{codigo_limpo}' não encontrado. "
-            "A base de CEST deste servico e uma AMOSTRA (51 codigos), nao a tabela do Convenio ICMS 142/18: "
-            "codigo ausente aqui nao quer dizer codigo invalido.",
+            f"CEST '{codigo_limpo}' não consta dos anexos II a XXVI do Convênio ICMS 142/18 "
+            "na redação carregada: o código não existe, foi revogado ou ainda não está em "
+            f"vigor. Tabela usada: {fonte}.",
             field="cest",
             value=cest,
         )
@@ -205,8 +208,14 @@ async def consultar_cest(cest: str) -> CESTResponse:
     return CESTResponse(
         cest=dado["cest"],
         descricao=dado["descricao"],
-        segmento=dado["cest"][:2],
-        ncm_relacionados=dado.get("ncm_relacionados", []),
+        segmento=dado["segmento"],
+        segmento_nome=dado["segmento_nome"],
+        anexo=dado["anexo"],
+        anexo_titulo=dado["anexo_titulo"],
+        item=dado["item"],
+        ncm_sh=dado["ncm_sh"],
+        ncm_relacionados=dado["ncm_relacionados"],
+        fonte=dado["fonte"],
     )
 
 
