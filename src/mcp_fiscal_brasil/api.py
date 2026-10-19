@@ -15,14 +15,17 @@ OpenAPI docs em http://localhost:8000/docs (Swagger UI).
 from __future__ import annotations
 
 import asyncio
+import base64
+import hmac
+import json
 import os
 import tempfile
 from pathlib import Path
 from typing import Any, Literal
 
 from cachetools import TTLCache
-from fastapi import FastAPI, HTTPException, Query
-from fastapi.responses import HTMLResponse
+from fastapi import FastAPI, Header, HTTPException, Query
+from fastapi.responses import HTMLResponse, Response
 from pydantic import BaseModel, Field
 
 from . import __version__
@@ -39,6 +42,7 @@ from .cep.client import CEPClient
 from .cnpj.tools import consultar_cnpj
 from .cpf.tools import validar_cpf_tool
 from .ibge.client import IBGEClient
+from .nfe.danfe import gerar_danfe
 from .nfe.status_sefaz import obter_status_certificado
 from .nfe.tools import UFS_VALIDAS, consultar_status_sefaz, validar_chave_nfe
 from .server import app as mcp_server
@@ -565,3 +569,43 @@ def run() -> None:
     host = os.environ.get("HOST", "127.0.0.1")
     port = int(os.environ.get("PORT", "8000"))
     uvicorn.run("mcp_fiscal_brasil.api:app", host=host, port=port, reload=False)
+
+
+class SharedDanfeRequest(BaseModel):
+    """XML completo da NF-e, fornecido pelo backend de um cliente autorizado."""
+
+    xml: str = Field(min_length=50, max_length=3_000_000)
+
+
+def _authorized_consumer(token: str | None) -> str:
+    """As chaves de serviços são configuradas por ambiente; nunca aceitar token do navegador."""
+    try:
+        clients = json.loads(os.getenv("FISCAL_SHARED_CLIENT_KEYS", "{}"))
+    except (ValueError, TypeError):
+        clients = {}
+    if not isinstance(clients, dict) or not token:
+        raise HTTPException(status_code=401, detail="Credencial de serviço inválida")
+    for consumer, secret in clients.items():
+        if consumer in {"tms", "erp", "lojas"} and isinstance(secret, str) and len(secret) >= 32 and hmac.compare_digest(secret, token):
+            return consumer
+    raise HTTPException(status_code=401, detail="Credencial de serviço inválida")
+
+
+@app.post("/v1/documentos/nfe/danfe.pdf", tags=["documentos"], summary="Gerar DANFE compartilhado")
+async def shared_nfe_danfe(body: SharedDanfeRequest, x_fiscal_service_key: str | None = Header(default=None)) -> Response:
+    """Gera PDF sem armazenar XML; acesso servidor-servidor TMS/ERP/Lojas."""
+    _authorized_consumer(x_fiscal_service_key)
+    try:
+        resultado = await asyncio.to_thread(gerar_danfe, body.xml)
+    except Exception as exc:
+        # Nenhum conteúdo de XML ou identificação sensível é incluído na mensagem.
+        logger.warning("shared_danfe_invalid_xml", error_type=type(exc).__name__)
+        raise HTTPException(status_code=422, detail="XML de NF-e completo inválido ou não suportado") from None
+    data = base64.b64decode(resultado.pdf_base64, validate=True)
+    if not data.startswith(b"%PDF-"):
+        raise HTTPException(status_code=502, detail="PDF gerado inválido")
+    return Response(content=data, media_type="application/pdf", headers={
+        "Content-Disposition": f'attachment; filename="{resultado.nome_arquivo}"',
+        "Cache-Control": "private, no-store",
+        "X-Content-Type-Options": "nosniff",
+    })
