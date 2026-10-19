@@ -549,27 +549,6 @@ def root() -> HTMLResponse:
     return HTMLResponse(_DEMO_HTML)
 
 
-# Montado por ultimo: as rotas declaradas acima (inclusive /health) tem
-# prioridade, e so o que sobra ("/mcp") chega ao app MCP.
-app.mount("/", _mcp_http)
-
-
-# ---------------------------------------------------------------------------
-# Entry point
-# ---------------------------------------------------------------------------
-
-
-def run() -> None:
-    """Entry point para o comando `mcp-fiscal-api`."""
-    import uvicorn
-
-    # Default seguro fora de container e loopback. Em Docker, o Dockerfile ja
-    # define ENV HOST=0.0.0.0 na imagem - a exposicao externa vem da camada de
-    # deploy (container/proxy), nao de um default aberto aqui.
-    host = os.environ.get("HOST", "127.0.0.1")
-    port = int(os.environ.get("PORT", "8000"))
-    uvicorn.run("mcp_fiscal_brasil.api:app", host=host, port=port, reload=False)
-
 
 class SharedDanfeRequest(BaseModel):
     """XML completo da NF-e, fornecido pelo backend de um cliente autorizado."""
@@ -609,3 +588,25 @@ async def shared_nfe_danfe(body: SharedDanfeRequest, x_fiscal_service_key: str |
         "Cache-Control": "private, no-store",
         "X-Content-Type-Options": "nosniff",
     })
+
+
+# Montado por ultimo: as rotas declaradas acima (inclusive /health) tem
+# prioridade, e so o que sobra ("/mcp") chega ao app MCP.
+app.mount("/", _mcp_http)
+
+
+# ---------------------------------------------------------------------------
+# Entry point
+# ---------------------------------------------------------------------------
+
+
+def run() -> None:
+    """Entry point para o comando `mcp-fiscal-api`."""
+    import uvicorn
+
+    # Default seguro fora de container e loopback. Em Docker, o Dockerfile ja
+    # define ENV HOST=0.0.0.0 na imagem - a exposicao externa vem da camada de
+    # deploy (container/proxy), nao de um default aberto aqui.
+    host = os.environ.get("HOST", "127.0.0.1")
+    port = int(os.environ.get("PORT", "8000"))
+    uvicorn.run("mcp_fiscal_brasil.api:app", host=host, port=port, reload=False)
