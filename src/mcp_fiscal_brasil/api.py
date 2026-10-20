@@ -42,6 +42,7 @@ from .cep.client import CEPClient
 from .cnpj.tools import consultar_cnpj
 from .cpf.tools import validar_cpf_tool
 from .ibge.client import IBGEClient
+from .dfe import gerar_dacte
 from .nfe.danfe import gerar_danfe
 from .nfe.status_sefaz import obter_status_certificado
 from .nfe.tools import UFS_VALIDAS, consultar_status_sefaz, validar_chave_nfe
@@ -588,6 +589,38 @@ async def shared_nfe_danfe(body: SharedDanfeRequest, x_fiscal_service_key: str |
         "Cache-Control": "private, no-store",
         "X-Content-Type-Options": "nosniff",
     })
+
+
+
+@app.post("/v1/documentos/cte/dacte.pdf", tags=["documentos"], summary="Gerar DACTE compartilhado")
+async def shared_cte_dacte(
+    body: SharedDanfeRequest,
+    x_fiscal_service_key: str | None = Header(default=None),
+) -> Response:
+    """Gera DACTE autorizado para TMS, ERP e Lojas; sem armazenar o XML."""
+    _authorized_consumer(x_fiscal_service_key)
+    try:
+        resultado = await asyncio.to_thread(gerar_dacte, body.xml)
+        if not resultado.autorizado:
+            raise ValueError("CT-e ainda não autorizado")
+        data = base64.b64decode(resultado.pdf_base64, validate=True)
+    except Exception as exc:
+        logger.warning("shared_dacte_invalid_xml", error_type=type(exc).__name__)
+        raise HTTPException(
+            status_code=422, detail="XML de CT-e completo autorizado inválido ou não suportado"
+        ) from None
+    if not data.startswith(b"%PDF-"):
+        raise HTTPException(status_code=502, detail="PDF gerado inválido")
+    return Response(
+        content=data,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f'attachment; filename="{resultado.nome_arquivo}"',
+            "Cache-Control": "private, no-store",
+            "X-Content-Type-Options": "nosniff",
+        },
+    )
+
 
 
 # Montado por ultimo: as rotas declaradas acima (inclusive /health) tem
