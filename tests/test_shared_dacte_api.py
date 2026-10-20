@@ -5,7 +5,7 @@ import json
 from fastapi.testclient import TestClient
 
 from mcp_fiscal_brasil.api import app
-from tests.dfe_amostras import cte
+from .dfe_amostras import cte
 
 client = TestClient(app)
 KEY = "a" * 40
